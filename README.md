@@ -59,3 +59,4 @@ VITE_API_BASE=https://api.tudominio.com
 
 El SVG del plano debe tener elementos con `id` coincidentes con `shapeId` de cada trastero (ej. `T12`).
 # ReservaTrasterosMaxibox
+# ReservaTrasterosMaxibox
