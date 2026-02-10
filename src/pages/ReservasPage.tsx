@@ -1,32 +1,58 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { PlanoSVG } from '../components/PlanoSVG'
 import { PanelLateral } from '../components/PanelLateral'
 import { getPlan } from '../services/api'
-import type { StorageUnit, UnitType } from '../types'
+import type { StorageUnit } from '../types'
 
 const DEFAULT_TENANT = 'maxibox'
 
-function getTenantSlug(): string {
+function readTenantSlug(): string {
   const params = new URLSearchParams(window.location.search)
   return params.get('tenant') || DEFAULT_TENANT
 }
 
 export function ReservasPage() {
-  const tenantSlug = getTenantSlug()
-  const [plan, setPlan] = useState<{ svgUrl: string; storageUnits: StorageUnit[] } | null>(null)
+  const tenantSlug = useMemo(() => {
+    const slug = readTenantSlug()
+    console.debug('[ReservasPage] tenantSlug leído:', slug)
+    return slug
+  }, [])
+
+  const [plan, setPlan] = useState<{
+    svgUrl: string
+    storageUnits: StorageUnit[]
+  } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [filterByType, setFilterByType] = useState<UnitType | null>(null)
+  const [filterByDimensions, setFilterByDimensions] = useState<number | null>(null)
   const [selectedUnit, setSelectedUnit] = useState<StorageUnit | null>(null)
 
   const loadPlan = useCallback(async () => {
     setLoading(true)
     setError(null)
+    console.debug('[ReservasPage] Cargando plan para tenant:', tenantSlug)
     try {
       const data = await getPlan(tenantSlug)
+      console.debug('[ReservasPage] Respuesta del plan:', {
+        svgUrl: data.svgUrl,
+        storageUnitsCount: data.storageUnits?.length ?? 0,
+      })
+
+      if (!data.svgUrl || typeof data.svgUrl !== 'string') {
+        throw new Error('El backend no devolvió una URL de plano válida (svgUrl)')
+      }
+      if (!Array.isArray(data.storageUnits)) {
+        throw new Error('El backend no devolvió un array de trasteros (storageUnits)')
+      }
+      if (data.storageUnits.length === 0) {
+        console.warn('[ReservasPage] El plan no contiene trasteros')
+      }
+
       setPlan({ svgUrl: data.svgUrl, storageUnits: data.storageUnits })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al cargar el plano')
+      const msg = err instanceof Error ? err.message : 'Error al cargar el plano'
+      console.error('[ReservasPage] Error cargando plan:', msg)
+      setError(msg)
     } finally {
       setLoading(false)
     }
@@ -36,24 +62,36 @@ export function ReservasPage() {
     loadPlan()
   }, [loadPlan])
 
-  const handleReservationSuccess = useCallback(() => {
-    if (!plan || !selectedUnit) return
-    setPlan((prev) => {
-      if (!prev) return prev
-      return {
-        ...prev,
-        storageUnits: prev.storageUnits.map((u) =>
-          u.id === selectedUnit.id ? { ...u, status: 'RESERVED' as const } : u
-        ),
-      }
-    })
-    setSelectedUnit(null)
-  }, [plan, selectedUnit])
+  const handleReservationSuccess = useCallback(
+    (reservedUnitId: string) => {
+      setPlan((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          storageUnits: prev.storageUnits.map((u) =>
+            u.id === reservedUnitId
+              ? { ...u, status: 'RESERVED' as const }
+              : u
+          ),
+        }
+      })
+      setSelectedUnit(null)
+    },
+    []
+  )
+
+  const onReservationSuccess = useCallback(() => {
+    if (!selectedUnit) return
+    handleReservationSuccess(selectedUnit.id)
+  }, [selectedUnit, handleReservationSuccess])
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <p className="text-gray-500">Cargando…</p>
+        <div className="text-center">
+          <span className="inline-block w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-2" />
+          <p className="text-gray-500">Cargando plano…</p>
+        </div>
       </div>
     )
   }
@@ -90,7 +128,7 @@ export function ReservasPage() {
           <PlanoSVG
             svgUrl={plan.svgUrl}
             storageUnits={plan.storageUnits}
-            filterByType={filterByType}
+            filterByDimensions={filterByDimensions}
             selectedUnit={selectedUnit}
             onSelectUnit={setSelectedUnit}
           />
@@ -98,11 +136,11 @@ export function ReservasPage() {
       </main>
       <PanelLateral
         storageUnits={plan.storageUnits}
-        filterByType={filterByType}
-        onFilterChange={setFilterByType}
+        filterByDimensions={filterByDimensions}
+        onFilterChange={setFilterByDimensions}
         selectedUnit={selectedUnit}
         tenantSlug={tenantSlug}
-        onReservationSuccess={handleReservationSuccess}
+        onReservationSuccess={onReservationSuccess}
         onClearSelection={() => setSelectedUnit(null)}
       />
     </div>

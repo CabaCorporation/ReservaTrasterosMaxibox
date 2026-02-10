@@ -1,24 +1,46 @@
+// ─── Estados y tipos base ─────────────────────────────────────────────
+
 export type UnitStatus =
   | 'AVAILABLE'
   | 'OCCUPIED'
   | 'RESERVED'
   | 'MAINTENANCE'
 
-export type UnitType = 'SMALL' | 'MEDIUM' | 'LARGE' | 'XL'
+// ─── Lo que devuelve el backend (sin enrichment) ──────────────────────
+
+export interface RawStorageUnit {
+  id: string
+  number: number
+  shapeId: string
+  status: UnitStatus
+  type: string           // "STANDARD", "PREMIUM", etc. — varía por empresa
+  price: number
+  dimensions?: string    // "2x1", "3x1", "5x1" — formato "AnchoxAlto"
+  width?: number
+  height?: number
+  length?: number
+  area?: number
+}
+
+export interface PlanResponse {
+  svgUrl: string
+  storageUnits: RawStorageUnit[]
+}
+
+// ─── Unidad enriquecida en el frontend ────────────────────────────────
 
 export interface StorageUnit {
   id: string
   number: number
   shapeId: string
   status: UnitStatus
-  type: UnitType
+  type: string
   price: number
+  dimensions: number       // m² — calculado en frontend desde "2x1" → 2
+  dimensionsLabel: string  // "2x1" — texto original para mostrar
 }
 
-export interface PlanResponse {
-  svgUrl: string
-  storageUnits: StorageUnit[]
-}
+// ─── Reservas ─────────────────────────────────────────────────────────
 
 export interface ReservationPayload {
   tenantSlug: string
@@ -34,12 +56,3 @@ export interface ReservationSuccess {
   storageUnitId: string
   message?: string
 }
-
-export const UNIT_TYPE_LABELS: Record<UnitType, string> = {
-  SMALL: '2 m²',
-  MEDIUM: '4 m²',
-  LARGE: '6 m²',
-  XL: '10 m²',
-}
-
-export const UNIT_TYPE_ORDER: UnitType[] = ['SMALL', 'MEDIUM', 'LARGE', 'XL']

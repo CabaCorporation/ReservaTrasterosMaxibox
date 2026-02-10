@@ -90,7 +90,7 @@ export function FormularioReserva({
       className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-3 transition-all duration-200"
     >
       <p className="text-sm font-medium text-gray-700">
-        Reservar trastero #{selectedUnit.number} · {selectedUnit.price} €/mes
+        Reservar trastero #{selectedUnit.number} · {selectedUnit.dimensionsLabel} ({selectedUnit.dimensions} m²) · {selectedUnit.price} €/mes
       </p>
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">Nombre</label>
