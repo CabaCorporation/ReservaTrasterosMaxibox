@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { PlanoSVG } from '../components/PlanoSVG'
 import { PanelLateral } from '../components/PanelLateral'
 import { getPlan } from '../services/api'
+import { getLocalPlanSvgUrl } from '../config/localPlans'
 import type { StorageUnit } from '../types'
 
 const DEFAULT_TENANT = 'maxibox'
@@ -22,33 +23,24 @@ export function ReservasPage() {
     svgUrl: string
     storageUnits: StorageUnit[]
   } | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading]                   = useState(true)
+  const [error, setError]                       = useState<string | null>(null)
   const [filterByDimensions, setFilterByDimensions] = useState<number | null>(null)
-  const [selectedUnit, setSelectedUnit] = useState<StorageUnit | null>(null)
+  const [selectedUnits, setSelectedUnits]       = useState<StorageUnit[]>([])
 
   const loadPlan = useCallback(async () => {
     setLoading(true)
     setError(null)
     console.debug('[ReservasPage] Cargando plan para tenant:', tenantSlug)
     try {
-      const data = await getPlan(tenantSlug)
-      console.debug('[ReservasPage] Respuesta del plan:', {
-        svgUrl: data.svgUrl,
-        storageUnitsCount: data.storageUnits?.length ?? 0,
-      })
+      const localSvgUrl = getLocalPlanSvgUrl(tenantSlug)
+      const data = await getPlan(tenantSlug, { requireSvgUrl: !localSvgUrl })
+      const resolvedSvgUrl = localSvgUrl ?? data.svgUrl
 
-      if (!data.svgUrl || typeof data.svgUrl !== 'string') {
-        throw new Error('El backend no devolvió una URL de plano válida (svgUrl)')
-      }
-      if (!Array.isArray(data.storageUnits)) {
-        throw new Error('El backend no devolvió un array de trasteros (storageUnits)')
-      }
-      if (data.storageUnits.length === 0) {
-        console.warn('[ReservasPage] El plan no contiene trasteros')
-      }
+      if (!resolvedSvgUrl) throw new Error('No se pudo resolver una URL de plano válida')
+      if (!Array.isArray(data.storageUnits)) throw new Error('El backend no devolvió un array de trasteros')
 
-      setPlan({ svgUrl: data.svgUrl, storageUnits: data.storageUnits })
+      setPlan({ svgUrl: resolvedSvgUrl, storageUnits: data.storageUnits })
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error al cargar el plano'
       console.error('[ReservasPage] Error cargando plan:', msg)
@@ -58,32 +50,30 @@ export function ReservasPage() {
     }
   }, [tenantSlug])
 
-  useEffect(() => {
-    loadPlan()
-  }, [loadPlan])
+  useEffect(() => { loadPlan() }, [loadPlan])
 
-  const handleReservationSuccess = useCallback(
-    (reservedUnitId: string) => {
-      setPlan((prev) => {
-        if (!prev) return prev
-        return {
-          ...prev,
-          storageUnits: prev.storageUnits.map((u) =>
-            u.id === reservedUnitId
-              ? { ...u, status: 'RESERVED' as const }
-              : u
-          ),
-        }
-      })
-      setSelectedUnit(null)
-    },
-    []
-  )
+  // Añade o quita una unidad del array de seleccionadas
+  const handleToggleUnit = useCallback((unit: StorageUnit) => {
+    setSelectedUnits(prev => {
+      const already = prev.some(u => u.id === unit.id)
+      return already ? prev.filter(u => u.id !== unit.id) : [...prev, unit]
+    })
+  }, [])
 
-  const onReservationSuccess = useCallback(() => {
-    if (!selectedUnit) return
-    handleReservationSuccess(selectedUnit.id)
-  }, [selectedUnit, handleReservationSuccess])
+  // Marca todas las unidades reservadas como RESERVED y limpia la selección
+  const handleReservationSuccess = useCallback((reservedIds: string[]) => {
+    const ids = new Set(reservedIds)
+    setPlan(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        storageUnits: prev.storageUnits.map(u =>
+          ids.has(u.id) ? { ...u, status: 'RESERVED' as const } : u
+        ),
+      }
+    })
+    setSelectedUnits([])
+  }, [])
 
   if (loading) {
     return (
@@ -121,7 +111,7 @@ export function ReservasPage() {
             Reserva de trasteros
           </h1>
           <p className="text-sm text-gray-500">
-            Selecciona un tamaño en el panel y luego un trastero en el plano
+            Selecciona uno o varios trasteros en el plano y rellena el formulario
           </p>
         </header>
         <div className="flex-1 min-h-0">
@@ -129,8 +119,8 @@ export function ReservasPage() {
             svgUrl={plan.svgUrl}
             storageUnits={plan.storageUnits}
             filterByDimensions={filterByDimensions}
-            selectedUnit={selectedUnit}
-            onSelectUnit={setSelectedUnit}
+            selectedUnits={selectedUnits}
+            onToggleUnit={handleToggleUnit}
           />
         </div>
       </main>
@@ -138,10 +128,10 @@ export function ReservasPage() {
         storageUnits={plan.storageUnits}
         filterByDimensions={filterByDimensions}
         onFilterChange={setFilterByDimensions}
-        selectedUnit={selectedUnit}
+        selectedUnits={selectedUnits}
         tenantSlug={tenantSlug}
-        onReservationSuccess={onReservationSuccess}
-        onClearSelection={() => setSelectedUnit(null)}
+        onReservationSuccess={handleReservationSuccess}
+        onClearSelection={() => setSelectedUnits([])}
       />
     </div>
   )

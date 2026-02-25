@@ -148,16 +148,24 @@ export interface EnrichedPlanData {
   storageUnits: StorageUnit[]
 }
 
-export async function getPlan(tenantSlug: string): Promise<EnrichedPlanData> {
+interface GetPlanOptions {
+  requireSvgUrl?: boolean
+}
+
+export async function getPlan(
+  tenantSlug: string,
+  options?: GetPlanOptions
+): Promise<EnrichedPlanData> {
   if (!tenantSlug || typeof tenantSlug !== 'string') {
     throw new Error('tenantSlug es obligatorio para cargar el plan')
   }
+  const requireSvgUrl = options?.requireSvgUrl ?? true
 
   const data = await fetchApi<PlanResponse>(
     `/api/public/plan/${encodeURIComponent(tenantSlug)}`
   )
 
-  if (!data.svgUrl || typeof data.svgUrl !== 'string') {
+  if (requireSvgUrl && (!data.svgUrl || typeof data.svgUrl !== 'string')) {
     throw new Error(`El backend no devolvió una URL de plano válida. svgUrl: ${JSON.stringify(data.svgUrl)}`)
   }
   if (!Array.isArray(data.storageUnits)) {
@@ -167,7 +175,7 @@ export async function getPlan(tenantSlug: string): Promise<EnrichedPlanData> {
   const enriched = data.storageUnits.map(enrichUnit)
 
   console.debug('[API] getPlan resultado:', {
-    svgUrl: data.svgUrl,
+    svgUrl: data.svgUrl ?? '(omitida)',
     totalUnits: enriched.length,
     dimensionsDistribution: [...new Set(enriched.map((u) => u.dimensions))].sort((a, b) => a - b),
     sample: enriched.slice(0, 3).map((u) => ({
@@ -179,7 +187,7 @@ export async function getPlan(tenantSlug: string): Promise<EnrichedPlanData> {
     })),
   })
 
-  return { svgUrl: data.svgUrl, storageUnits: enriched }
+  return { svgUrl: typeof data.svgUrl === 'string' ? data.svgUrl : '', storageUnits: enriched }
 }
 
 export async function createReservation(
@@ -197,5 +205,7 @@ export function getSvgFullUrl(svgUrl: string): string {
   }
   if (svgUrl.startsWith('http')) return svgUrl
   const path = svgUrl.startsWith('/') ? svgUrl : `/${svgUrl}`
+  // Los SVG locales compilados por Vite se sirven desde el propio frontend.
+  if (!path.startsWith('/planos/')) return path
   return API_BASE ? `${API_BASE}${path}` : path
 }

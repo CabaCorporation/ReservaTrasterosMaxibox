@@ -8,17 +8,15 @@ interface PanelLateralProps {
   storageUnits: StorageUnit[]
   filterByDimensions: number | null
   onFilterChange: (dimensions: number | null) => void
-  selectedUnit: StorageUnit | null
+  selectedUnits: StorageUnit[]
   tenantSlug: string
-  onReservationSuccess: () => void
+  onReservationSuccess: (reservedIds: string[]) => void
   onClearSelection?: () => void
 }
 
-// ─── Estructura de un grupo de filtro ─────────────────────────────────
-
 interface DimensionGroup {
   dimensions: number
-  label: string     // formato original: "2x1", "3x1", etc.
+  label: string
   total: number
   available: number
 }
@@ -29,12 +27,11 @@ export function PanelLateral({
   storageUnits,
   filterByDimensions,
   onFilterChange,
-  selectedUnit,
+  selectedUnits,
   tenantSlug,
   onReservationSuccess,
   onClearSelection,
 }: PanelLateralProps) {
-  // Generar grupos dinámicamente a partir de los dimensions únicos
   const dimensionGroups = useMemo<DimensionGroup[]>(() => {
     const groupMap = new Map<number, { label: string; total: number; available: number }>()
     for (const u of storageUnits) {
@@ -51,18 +48,13 @@ export function PanelLateral({
       }
     }
     return [...groupMap.entries()]
-      .map(([dimensions, counts]) => ({
-        dimensions,
-        label: counts.label,
-        total: counts.total,
-        available: counts.available,
-      }))
+      .map(([dimensions, counts]) => ({ dimensions, ...counts }))
       .sort((a, b) => a.dimensions - b.dimensions)
   }, [storageUnits])
 
   const totalAvailable = useMemo(
-    () => storageUnits.filter((u) => u.status === 'AVAILABLE').length,
-    [storageUnits]
+    () => storageUnits.filter(u => u.status === 'AVAILABLE').length,
+    [storageUnits],
   )
 
   return (
@@ -71,7 +63,7 @@ export function PanelLateral({
       <div className="p-4 border-b border-gray-200">
         <h2 className="text-lg font-semibold text-gray-900">Trasteros</h2>
         <p className="text-sm text-gray-500 mt-0.5">
-          Elige tamaño y luego un trastero en el plano
+          Elige tamaño y selecciona uno o varios trasteros
         </p>
         <p className="text-xs text-gray-400 mt-1">
           {totalAvailable} de {storageUnits.length} disponibles
@@ -80,21 +72,18 @@ export function PanelLateral({
 
       {/* Contenido scrollable */}
       <div className="flex-1 overflow-y-auto p-4 space-y-2">
-        {/* Filtros dinámicos por m² */}
+
+        {/* Filtros por m² */}
         {dimensionGroups.length === 0 && (
-          <p className="text-sm text-gray-400 py-2">
-            No hay trasteros disponibles en este plano.
-          </p>
+          <p className="text-sm text-gray-400 py-2">No hay trasteros disponibles.</p>
         )}
-        {dimensionGroups.map((group) => {
+        {dimensionGroups.map(group => {
           const isActive = filterByDimensions === group.dimensions
           return (
             <button
               key={group.dimensions}
               type="button"
-              onClick={() =>
-                onFilterChange(isActive ? null : group.dimensions)
-              }
+              onClick={() => onFilterChange(isActive ? null : group.dimensions)}
               className={`w-full text-left px-4 py-3 rounded-xl border transition-all duration-200 ${
                 isActive
                   ? 'border-blue-500 bg-blue-50 text-blue-800'
@@ -116,7 +105,6 @@ export function PanelLateral({
           )
         })}
 
-        {/* Quitar filtro */}
         {filterByDimensions !== null && (
           <button
             type="button"
@@ -127,26 +115,60 @@ export function PanelLateral({
           </button>
         )}
 
-        {/* Leyenda de colores */}
+        {/* Trasteros seleccionados */}
+        {selectedUnits.length > 0 && (
+          <div className="pt-3 border-t border-gray-100 mt-2">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-gray-600">
+                Seleccionados ({selectedUnits.length})
+              </p>
+              {onClearSelection && (
+                <button
+                  type="button"
+                  onClick={onClearSelection}
+                  className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+                >
+                  Quitar todos
+                </button>
+              )}
+            </div>
+            <ul className="space-y-1">
+              {selectedUnits.map(u => (
+                <li
+                  key={u.id}
+                  className="flex items-center justify-between text-xs bg-green-50 border border-green-200 rounded-lg px-3 py-1.5"
+                >
+                  <span className="font-medium text-green-800">
+                    #{u.number} · {u.dimensionsLabel} · {u.price} €/mes
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-gray-500 mt-2 text-right">
+              Total: {selectedUnits.reduce((s, u) => s + u.price, 0)} €/mes
+            </p>
+          </div>
+        )}
+
+        {/* Leyenda */}
         <div className="pt-3 border-t border-gray-100 mt-2 space-y-1">
           <p className="text-xs font-medium text-gray-500 mb-1">Leyenda</p>
-          <div className="flex items-center gap-2 text-xs text-gray-600">
-            <span className="w-3 h-3 rounded-sm bg-blue-500 inline-block" /> Disponible
-          </div>
-          <div className="flex items-center gap-2 text-xs text-gray-600">
-            <span className="w-3 h-3 rounded-sm bg-green-500 inline-block" /> Seleccionado
-          </div>
-          <div className="flex items-center gap-2 text-xs text-gray-600">
-            <span className="w-3 h-3 rounded-sm bg-red-500 inline-block" /> Ocupado / Reservado
-          </div>
-          <div className="flex items-center gap-2 text-xs text-gray-600">
-            <span className="w-3 h-3 rounded-sm bg-gray-400 inline-block" /> Fuera de filtro
-          </div>
+          {[
+            { color: '#D19E02', label: 'Disponible' },
+            { color: '#89D102', label: 'Seleccionado' },
+            { color: '#D14402', label: 'Ocupado / Reservado' },
+            { color: '#A17902', label: 'Fuera de filtro' },
+          ].map(({ color, label }) => (
+            <div key={label} className="flex items-center gap-2 text-xs text-gray-600">
+              <span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: color }} />
+              {label}
+            </div>
+          ))}
         </div>
 
         {/* Formulario de reserva */}
         <FormularioReserva
-          selectedUnit={selectedUnit}
+          selectedUnits={selectedUnits}
           tenantSlug={tenantSlug}
           onSuccess={onReservationSuccess}
           onCancel={onClearSelection}

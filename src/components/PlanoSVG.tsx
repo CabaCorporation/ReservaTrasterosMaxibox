@@ -1,85 +1,109 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getSvgFullUrl } from '../services/api'
 import type { StorageUnit } from '../types'
 
-// ─── Lógica de colores ────────────────────────────────────────────────
+// ─── Colores ─────────────────────────────────────────────────────────
+
+const COLOR_AVAILABLE = '#D19E02' // ámbar dorado  → disponible
+const COLOR_SELECTED  = '#89D102' // verde lima    → seleccionado
+const COLOR_OCCUPIED  = '#D14402' // naranja-rojo  → ocupado / reservado
+const COLOR_FILTERED  = '#A17902' // ámbar oscuro  → fuera del filtro
 
 function getFill(
   unit: StorageUnit,
   filterByDimensions: number | null,
-  selectedId: string | null
+  selectedIds: Set<string>,
 ): string {
-  if (selectedId === unit.id) return '#22c55e'       // verde → seleccionado
-  if (unit.status !== 'AVAILABLE') return '#ef4444'   // rojo  → no disponible
-  if (filterByDimensions !== null && unit.dimensions !== filterByDimensions) return '#9ca3af'
-  return '#3b82f6'                                    // azul  → disponible
+  if (selectedIds.has(unit.id)) return COLOR_SELECTED
+  if (unit.status !== 'AVAILABLE') return COLOR_OCCUPIED
+  if (filterByDimensions !== null && unit.dimensions !== filterByDimensions)
+    return COLOR_FILTERED
+  return COLOR_AVAILABLE
 }
 
-function isClickable(
-  unit: StorageUnit,
-  filterByDimensions: number | null
-): boolean {
+function isClickable(unit: StorageUnit, filterByDimensions: number | null): boolean {
   if (unit.status !== 'AVAILABLE') return false
   if (filterByDimensions !== null && unit.dimensions !== filterByDimensions) return false
   return true
 }
 
-// ─── Props ────────────────────────────────────────────────────────────
+// ─── Helpers SVG ────────────────────────────────────────────────────
+
+function getShapeIdVariants(shapeId: string): string[] {
+  const raw = shapeId.trim()
+  if (!raw) return []
+  const variants = new Set<string>()
+  variants.add(raw)
+  variants.add(raw.toUpperCase())
+  const match = raw.match(/^([a-zA-Z]+)\s*0*(\d+)$/)
+  if (match) {
+    const prefix = match[1].toUpperCase()
+    const n = Number(match[2])
+    if (Number.isFinite(n)) {
+      variants.add(`${prefix}${n}`)
+      variants.add(`${prefix}${String(n).padStart(2, '0')}`)
+      variants.add(`${prefix}${String(n).padStart(3, '0')}`)
+    }
+  }
+  return [...variants]
+}
+
+function findSvgElement(svgEl: Element, shapeId: string): SVGElement | null {
+  for (const v of getShapeIdVariants(shapeId)) {
+    const el = svgEl.querySelector(`[id="${v}"]`) as SVGElement | null
+    if (el) return el
+  }
+  return null
+}
+
+// ─── Props ───────────────────────────────────────────────────────────
 
 interface PlanoSVGProps {
   svgUrl: string
   storageUnits: StorageUnit[]
   filterByDimensions: number | null
-  selectedUnit: StorageUnit | null
-  onSelectUnit: (unit: StorageUnit | null) => void
+  selectedUnits: StorageUnit[]
+  onToggleUnit: (unit: StorageUnit) => void
 }
 
-// ─── Componente ───────────────────────────────────────────────────────
+// ─── Componente ──────────────────────────────────────────────────────
 
 export function PlanoSVG({
   svgUrl,
   storageUnits,
   filterByDimensions,
-  selectedUnit,
-  onSelectUnit,
+  selectedUnits,
+  onToggleUnit,
 }: PlanoSVGProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const innerRef = useRef<HTMLDivElement>(null)
+  // svgHostRef: nodo que nunca toca React tras la primera inyección
+  const svgHostRef = useRef<HTMLDivElement>(null)
+
   const [svgContent, setSvgContent] = useState<string | null>(null)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  const [loadError, setLoadError]   = useState<string | null>(null)
   const [matchWarning, setMatchWarning] = useState<string | null>(null)
   const [tooltip, setTooltip] = useState<{
-    unit: StorageUnit
-    x: number
-    y: number
+    unit: StorageUnit; x: number; y: number
   } | null>(null)
   const [scale, setScale] = useState(1)
 
-  // Refs para acceder a valores actualizados dentro de callbacks
-  const filterRef = useRef(filterByDimensions)
-  const selectedUnitRef = useRef(selectedUnit)
-  const onSelectUnitRef = useRef(onSelectUnit)
+  // Refs para event handlers — siempre tienen el valor más reciente
+  const filterRef       = useRef(filterByDimensions)
+  const selectedUnitsRef = useRef(selectedUnits)
+  const onToggleRef     = useRef(onToggleUnit)
+  filterRef.current      = filterByDimensions
+  selectedUnitsRef.current = selectedUnits
+  onToggleRef.current    = onToggleUnit
 
-  filterRef.current = filterByDimensions
-  selectedUnitRef.current = selectedUnit
-  onSelectUnitRef.current = onSelectUnit
-
-  // Map shapeId → StorageUnit
-  const unitsByShapeId = useRef(new Map<string, StorageUnit>())
+  // ── 1. Cargar SVG desde URL ─────────────────────────────────────
   useEffect(() => {
-    unitsByShapeId.current = new Map(storageUnits.map((u) => [u.shapeId, u]))
-  }, [storageUnits])
-
-  // ── Cargar SVG ──
-  useEffect(() => {
+    setSvgContent(null)
     setLoadError(null)
     setMatchWarning(null)
-    setSvgContent(null)
 
     let url: string
-    try {
-      url = getSvgFullUrl(svgUrl)
-    } catch (e) {
+    try { url = getSvgFullUrl(svgUrl) }
+    catch (e) {
       setLoadError(e instanceof Error ? e.message : 'URL de plano inválida')
       return
     }
@@ -87,24 +111,18 @@ export function PlanoSVG({
     let cancelled = false
     fetch(url, {
       cache: 'no-store',
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-      },
+      headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', Pragma: 'no-cache' },
     })
-      .then((r) => {
-        if (r.status === 304) throw new Error('SVG en caché (304)')
+      .then(r => {
         if (!r.ok) throw new Error(`SVG HTTP ${r.status}`)
         return r.text()
       })
-      .then((text) => {
+      .then(text => {
         if (cancelled) return
-        if (!text || !text.includes('<svg')) {
-          throw new Error('La respuesta no contiene un SVG válido')
-        }
+        if (!text.includes('<svg')) throw new Error('La respuesta no contiene un SVG válido')
         setSvgContent(text)
       })
-      .catch((err) => {
+      .catch(err => {
         if (cancelled) return
         setLoadError(err instanceof Error ? err.message : 'No se pudo cargar el plano')
       })
@@ -112,94 +130,87 @@ export function PlanoSVG({
     return () => { cancelled = true }
   }, [svgUrl])
 
-  // ── Aplicar colores + eventos directos en cada elemento ──
-  const applyColorsAndEvents = useCallback(() => {
-    const root = innerRef.current
-    if (!root) return
-    const svgEl = root.querySelector('svg')
-    if (!svgEl) return
+  // ── 2. Inyectar el SVG en el DOM (una sola vez por carga) ───────
+  // React NUNCA vuelve a tocar svgHostRef → los estilos aplicados por JS persisten
+  useEffect(() => {
+    const host = svgHostRef.current
+    if (!host || !svgContent) return
+    host.innerHTML = svgContent
+  }, [svgContent])
 
-    const selectedId = selectedUnitRef.current?.id ?? null
-    const currentFilter = filterRef.current
-    const map = unitsByShapeId.current
-    let matched = 0
-    const missing: string[] = []
+  // ── 3. Aplicar colores + asignar eventos ────────────────────────
+  // Se ejecuta cada vez que cambia cualquier valor relevante
+  useEffect(() => {
+    const host = svgHostRef.current
+    if (!host || !svgContent) return
 
-    map.forEach((unit, shapeId) => {
-      const el = svgEl.querySelector(`[id="${shapeId}"]`) as SVGElement | null
-      if (!el) {
-        missing.push(shapeId)
-        return
+    // Pequeño delay para que el browser haya procesado el innerHTML
+    const frame = requestAnimationFrame(() => {
+      const svgEl = host.querySelector('svg')
+      if (!svgEl) return
+
+      const selectedIds = new Set(selectedUnits.map(u => u.id))
+      let matched = 0
+      const missing: string[] = []
+
+      for (const unit of storageUnits) {
+        const el = findSvgElement(svgEl, unit.shapeId)
+        if (!el) { missing.push(unit.shapeId); continue }
+        matched++
+
+        const fill = getFill(unit, filterByDimensions, selectedIds)
+        el.setAttribute('fill', fill)
+        el.style.fill = fill
+        el.style.transition = 'fill 0.2s ease'
+        el.style.cursor = isClickable(unit, filterByDimensions) ? 'pointer' : 'default'
+
+        // Asignación directa → sustituye el handler anterior sin removeEventListener
+        el.onclick = (ev: MouseEvent) => {
+          ev.stopPropagation()
+          const u = unit
+          if (!isClickable(u, filterRef.current)) return
+          onToggleRef.current(u)
+        }
+
+        el.onmouseenter = (ev: MouseEvent) => {
+          setTooltip({ unit, x: ev.clientX, y: ev.clientY })
+        }
+
+        el.onmousemove = (ev: MouseEvent) => {
+          setTooltip(prev => prev ? { ...prev, x: ev.clientX, y: ev.clientY } : null)
+        }
+
+        el.onmouseleave = () => setTooltip(null)
       }
-      matched++
 
-      const fill = getFill(unit, currentFilter, selectedId)
-      const clickable = isClickable(unit, currentFilter)
-
-      // Colores y estilos
-      el.setAttribute('fill', fill)
-      el.style.fill = fill
-      el.style.transition = 'fill 0.2s ease'
-      el.style.cursor = clickable ? 'pointer' : 'default'
-
-      // ── Eventos DIRECTOS en el elemento ──
-      // Usar propiedades .onclick, .onmouseenter, etc. reemplaza automáticamente
-      // el handler anterior sin necesidad de removeEventListener
-
-      el.onclick = (ev: MouseEvent) => {
-        ev.stopPropagation()
-        const u = unitsByShapeId.current.get(shapeId)
-        if (!u || !isClickable(u, filterRef.current)) return
-        const sel = selectedUnitRef.current
-        onSelectUnitRef.current(sel?.id === u.id ? null : u)
-      }
-
-      el.onmouseenter = (ev: MouseEvent) => {
-        const u = unitsByShapeId.current.get(shapeId)
-        if (u) setTooltip({ unit: u, x: ev.clientX, y: ev.clientY })
-      }
-
-      el.onmousemove = (ev: MouseEvent) => {
-        setTooltip((prev) => prev ? { ...prev, x: ev.clientX, y: ev.clientY } : null)
-      }
-
-      el.onmouseleave = () => {
-        setTooltip(null)
+      if (storageUnits.length > 0 && matched === 0) {
+        setMatchWarning(
+          `Plano cargado pero ningún trastero coincide. IDs esperados: ${storageUnits.slice(0, 5).map(u => u.shapeId).join(', ')}`
+        )
+      } else if (missing.length > 0) {
+        setMatchWarning(`${missing.length} trastero(s) sin correspondencia en el plano`)
+      } else {
+        setMatchWarning(null)
       }
     })
 
-    if (map.size > 0 && matched === 0) {
-      setMatchWarning(
-        `Plano cargado pero ningún trastero coincide. shapeIds esperados: ${[...map.keys()].slice(0, 10).join(', ')}`
-      )
-    } else if (missing.length > 0) {
-      setMatchWarning(`${missing.length} trastero(s) sin correspondencia: ${missing.slice(0, 5).join(', ')}`)
-    } else {
-      setMatchWarning(null)
-    }
-  }, [storageUnits])
-
-  // Re-aplicar cuando cambia filtro, selección, o SVG
-  useEffect(() => {
-    if (!svgContent) return
-    const frame = requestAnimationFrame(() => applyColorsAndEvents())
     return () => cancelAnimationFrame(frame)
-  }, [svgContent, applyColorsAndEvents, filterByDimensions, selectedUnit])
+  }, [svgContent, storageUnits, filterByDimensions, selectedUnits])
 
-  // ── Zoom con Ctrl+scroll ──
+  // ── 4. Zoom Ctrl+scroll ─────────────────────────────────────────
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey && !e.metaKey) return
       e.preventDefault()
-      setScale((s) => Math.min(3, Math.max(0.3, s + (e.deltaY > 0 ? -0.1 : 0.1))))
+      setScale(s => Math.min(3, Math.max(0.3, s + (e.deltaY > 0 ? -0.1 : 0.1))))
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
   }, [])
 
-  // ── Render ──
+  // ── Render ──────────────────────────────────────────────────────
 
   if (loadError) {
     return (
@@ -232,21 +243,17 @@ export function PlanoSVG({
       <div className="flex items-center gap-2 justify-end">
         <button
           type="button"
-          onClick={() => setScale((s) => Math.max(0.3, s - 0.2))}
+          onClick={() => setScale(s => Math.max(0.3, s - 0.2))}
           className="rounded-lg border border-gray-300 px-2 py-1 text-sm hover:bg-gray-100"
-        >
-          −
-        </button>
+        >−</button>
         <span className="text-sm text-gray-600 min-w-[3rem] text-center">
           {Math.round(scale * 100)}%
         </span>
         <button
           type="button"
-          onClick={() => setScale((s) => Math.min(3, s + 0.2))}
+          onClick={() => setScale(s => Math.min(3, s + 0.2))}
           className="rounded-lg border border-gray-300 px-2 py-1 text-sm hover:bg-gray-100"
-        >
-          +
-        </button>
+        >+</button>
       </div>
 
       <div
@@ -254,15 +261,19 @@ export function PlanoSVG({
         className="overflow-auto bg-gray-100 rounded-xl min-h-[300px] flex items-center justify-center p-4"
         style={{ touchAction: 'manipulation' }}
       >
+        {/*
+          svgHostRef apunta a este div.
+          React NO renderiza nada dentro → innerHTML lo gestiona exclusivamente
+          el useEffect de inyección. Así los estilos aplicados por JS nunca
+          son borrados por el reconciliador de React.
+        */}
         <div
-          ref={innerRef}
+          ref={svgHostRef}
           className="inline-block min-w-0 transition-transform duration-200 origin-center"
           style={{ transform: `scale(${scale})` }}
-          dangerouslySetInnerHTML={{ __html: svgContent }}
         />
       </div>
 
-      {/* Tooltip flotante */}
       {tooltip && (
         <div
           className="fixed z-50 pointer-events-none px-3 py-2 text-sm text-white bg-gray-900 rounded-lg shadow-lg max-w-[220px]"
