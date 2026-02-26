@@ -5,6 +5,7 @@ import type {
   StorageUnit,
   ReservationPayload,
   ReservationSuccess,
+  FullReservationPayload,
 } from '../types'
 
 // ─── Anti-cache ───────────────────────────────────────────────────────
@@ -197,6 +198,32 @@ export async function createReservation(
     method: 'POST',
     body: JSON.stringify(payload),
   })
+}
+
+export async function createFullReservation(
+  tenantId: string,
+  payload: FullReservationPayload
+): Promise<{ id?: string; message?: string }> {
+  return fetchApi('/api/reservations', {
+    method: 'POST',
+    headers: { 'x-tenant-id': tenantId },
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function getAvailableUnits(
+  tenantId: string,
+  filters?: { squareMeters?: number; maxMonthlyPrice?: number }
+): Promise<StorageUnit[]> {
+  const params = new URLSearchParams()
+  if (filters?.squareMeters != null) params.set('squareMeters', String(filters.squareMeters))
+  if (filters?.maxMonthlyPrice != null) params.set('maxMonthlyPrice', String(filters.maxMonthlyPrice))
+  const qs = params.toString()
+  const data = await fetchApi<RawStorageUnit[]>(
+    `/api/storage-units/available${qs ? `?${qs}` : ''}`,
+    { headers: { 'x-tenant-id': tenantId } }
+  )
+  return Array.isArray(data) ? data.map(enrichUnit) : []
 }
 
 export function getSvgFullUrl(svgUrl: string): string {

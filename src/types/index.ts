@@ -40,7 +40,7 @@ export interface StorageUnit {
   dimensionsLabel: string  // "2x1" — texto original para mostrar
 }
 
-// ─── Reservas ─────────────────────────────────────────────────────────
+// ─── Reservas (API pública simple) ───────────────────────────────────
 
 export interface ReservationPayload {
   tenantSlug: string
@@ -55,4 +55,40 @@ export interface ReservationSuccess {
   id?: string
   storageUnitId: string
   message?: string
+}
+
+// ─── Wizard ───────────────────────────────────────────────────────────
+
+export type PaymentMethod = 'card' | 'transfer' | 'cash'
+
+export type StartMode = 'immediate' | 'next_month'
+
+export interface CustomerData {
+  firstName: string
+  lastName: string
+  dni: string
+  phone: string
+  email: string
+  address: string
+  city: string
+  postalCode: string
+  shelfIncluded: boolean
+  premiumInsurance: boolean
+  goldInsurance: boolean
+}
+
+export interface FullReservationPayload {
+  customer: Omit<CustomerData, 'shelfIncluded' | 'premiumInsurance' | 'goldInsurance'>
+  contract: {
+    storageUnitId: string
+    monthlyPrice: number
+    startDate: string
+    shelfIncluded: boolean
+    premiumInsurance: boolean
+    goldInsurance: boolean
+    promotionId?: string
+  }
+  payment: {
+    paymentMethod: PaymentMethod
+  }
 }

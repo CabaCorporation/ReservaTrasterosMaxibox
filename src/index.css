@@ -9,3 +9,19 @@ body {
 #root {
   min-height: 100vh;
 }
+
+/* Wizard step transition — fade + subtle slide up */
+@keyframes wizardStepEnter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.wizard-step-enter {
+  animation: wizardStepEnter 0.25s ease both;
+}

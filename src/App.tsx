@@ -1,7 +1,7 @@
-import { ReservasPage } from './pages/ReservasPage'
+import { ReservationWizard } from './wizard/ReservationWizard'
 
 function App() {
-  return <ReservasPage />
+  return <ReservationWizard />
 }
 
 export default App

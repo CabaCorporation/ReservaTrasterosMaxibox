@@ -13,17 +13,23 @@ function getFill(
   unit: StorageUnit,
   filterByDimensions: number | null,
   selectedIds: Set<string>,
+  maxPrice: number | null,
 ): string {
   if (selectedIds.has(unit.id)) return COLOR_SELECTED
   if (unit.status !== 'AVAILABLE') return COLOR_OCCUPIED
-  if (filterByDimensions !== null && unit.dimensions !== filterByDimensions)
-    return COLOR_FILTERED
+  if (filterByDimensions !== null && unit.dimensions !== filterByDimensions) return COLOR_FILTERED
+  if (maxPrice !== null && unit.price > maxPrice) return COLOR_FILTERED
   return COLOR_AVAILABLE
 }
 
-function isClickable(unit: StorageUnit, filterByDimensions: number | null): boolean {
+function isClickable(
+  unit: StorageUnit,
+  filterByDimensions: number | null,
+  maxPrice: number | null,
+): boolean {
   if (unit.status !== 'AVAILABLE') return false
   if (filterByDimensions !== null && unit.dimensions !== filterByDimensions) return false
+  if (maxPrice !== null && unit.price > maxPrice) return false
   return true
 }
 
@@ -62,8 +68,11 @@ interface PlanoSVGProps {
   svgUrl: string
   storageUnits: StorageUnit[]
   filterByDimensions: number | null
+  maxPrice?: number | null
   selectedUnits: StorageUnit[]
   onToggleUnit: (unit: StorageUnit) => void
+  /** Height in px of the scrollable container. Auto-fit scale is computed to fill it. */
+  containerHeight?: number
 }
 
 // ─── Componente ──────────────────────────────────────────────────────
@@ -72,28 +81,31 @@ export function PlanoSVG({
   svgUrl,
   storageUnits,
   filterByDimensions,
+  maxPrice = null,
   selectedUnits,
   onToggleUnit,
+  containerHeight,
 }: PlanoSVGProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   // svgHostRef: nodo que nunca toca React tras la primera inyección
   const svgHostRef = useRef<HTMLDivElement>(null)
 
-  const [svgContent, setSvgContent] = useState<string | null>(null)
-  const [loadError, setLoadError]   = useState<string | null>(null)
+  const [svgContent, setSvgContent]     = useState<string | null>(null)
+  const [loadError, setLoadError]       = useState<string | null>(null)
   const [matchWarning, setMatchWarning] = useState<string | null>(null)
-  const [tooltip, setTooltip] = useState<{
-    unit: StorageUnit; x: number; y: number
-  } | null>(null)
-  const [scale, setScale] = useState(1)
+  const [tooltip, setTooltip]           = useState<{ unit: StorageUnit; x: number; y: number } | null>(null)
+  const [scale, setScale]               = useState(1)
+  const [fitScale, setFitScale]         = useState(1)
 
   // Refs para event handlers — siempre tienen el valor más reciente
-  const filterRef       = useRef(filterByDimensions)
+  const filterRef        = useRef(filterByDimensions)
+  const maxPriceRef      = useRef(maxPrice)
   const selectedUnitsRef = useRef(selectedUnits)
-  const onToggleRef     = useRef(onToggleUnit)
-  filterRef.current      = filterByDimensions
+  const onToggleRef      = useRef(onToggleUnit)
+  filterRef.current        = filterByDimensions
+  maxPriceRef.current      = maxPrice
   selectedUnitsRef.current = selectedUnits
-  onToggleRef.current    = onToggleUnit
+  onToggleRef.current      = onToggleUnit
 
   // ── 1. Cargar SVG desde URL ─────────────────────────────────────
   useEffect(() => {
@@ -130,12 +142,34 @@ export function PlanoSVG({
     return () => { cancelled = true }
   }, [svgUrl])
 
-  // ── 2. Inyectar el SVG en el DOM (una sola vez por carga) ───────
+  // ── 2. Inyectar SVG + auto-fit scale ────────────────────────────
   // React NUNCA vuelve a tocar svgHostRef → los estilos aplicados por JS persisten
   useEffect(() => {
-    const host = svgHostRef.current
+    const host      = svgHostRef.current
+    const container = containerRef.current
     if (!host || !svgContent) return
     host.innerHTML = svgContent
+
+    // Compute scale so the SVG fits exactly inside the container
+    requestAnimationFrame(() => {
+      const svgEl = host.querySelector('svg') as SVGSVGElement | null
+      if (!svgEl || !container) return
+
+      const vb   = svgEl.viewBox?.baseVal
+      const svgW = (vb && vb.width  > 0) ? vb.width  : parseFloat(svgEl.getAttribute('width')  ?? '0')
+      const svgH = (vb && vb.height > 0) ? vb.height : parseFloat(svgEl.getAttribute('height') ?? '0')
+
+      if (svgW > 0 && svgH > 0) {
+        const pad    = 32
+        const availW = container.clientWidth  - pad
+        const availH = container.clientHeight - pad
+        const fit    = Math.min(availW / svgW, availH / svgH) * 0.97 // tiny breathing room
+        if (Number.isFinite(fit) && fit > 0) {
+          setScale(fit)
+          setFitScale(fit)
+        }
+      }
+    })
   }, [svgContent])
 
   // ── 3. Aplicar colores + asignar eventos ────────────────────────
@@ -158,17 +192,17 @@ export function PlanoSVG({
         if (!el) { missing.push(unit.shapeId); continue }
         matched++
 
-        const fill = getFill(unit, filterByDimensions, selectedIds)
+        const fill = getFill(unit, filterByDimensions, selectedIds, maxPrice)
         el.setAttribute('fill', fill)
         el.style.fill = fill
         el.style.transition = 'fill 0.2s ease'
-        el.style.cursor = isClickable(unit, filterByDimensions) ? 'pointer' : 'default'
+        el.style.cursor = isClickable(unit, filterByDimensions, maxPrice) ? 'pointer' : 'default'
 
         // Asignación directa → sustituye el handler anterior sin removeEventListener
         el.onclick = (ev: MouseEvent) => {
           ev.stopPropagation()
           const u = unit
-          if (!isClickable(u, filterRef.current)) return
+          if (!isClickable(u, filterRef.current, maxPriceRef.current)) return
           onToggleRef.current(u)
         }
 
@@ -195,7 +229,7 @@ export function PlanoSVG({
     })
 
     return () => cancelAnimationFrame(frame)
-  }, [svgContent, storageUnits, filterByDimensions, selectedUnits])
+  }, [svgContent, storageUnits, filterByDimensions, maxPrice, selectedUnits])
 
   // ── 4. Zoom Ctrl+scroll ─────────────────────────────────────────
   useEffect(() => {
@@ -243,23 +277,38 @@ export function PlanoSVG({
       <div className="flex items-center gap-2 justify-end">
         <button
           type="button"
-          onClick={() => setScale(s => Math.max(0.3, s - 0.2))}
+          onClick={() => setScale(s => Math.max(0.1, s - 0.15))}
           className="rounded-lg border border-gray-300 px-2 py-1 text-sm hover:bg-gray-100"
+          title="Reducir zoom"
         >−</button>
         <span className="text-sm text-gray-600 min-w-[3rem] text-center">
           {Math.round(scale * 100)}%
         </span>
         <button
           type="button"
-          onClick={() => setScale(s => Math.min(3, s + 0.2))}
+          onClick={() => setScale(s => Math.min(4, s + 0.15))}
           className="rounded-lg border border-gray-300 px-2 py-1 text-sm hover:bg-gray-100"
+          title="Ampliar zoom"
         >+</button>
+        <button
+          type="button"
+          onClick={() => setScale(fitScale)}
+          className="rounded-lg border border-gray-300 px-2 py-1 text-sm hover:bg-gray-100"
+          title="Ajustar al contenedor"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+          </svg>
+        </button>
       </div>
 
       <div
         ref={containerRef}
-        className="overflow-auto bg-gray-100 rounded-xl min-h-[300px] flex items-center justify-center p-4"
-        style={{ touchAction: 'manipulation' }}
+        className="overflow-auto bg-gray-100 rounded-xl flex items-start justify-center p-4"
+        style={{
+          touchAction: 'manipulation',
+          height: containerHeight ? `${containerHeight}px` : '420px',
+        }}
       >
         {/*
           svgHostRef apunta a este div.
