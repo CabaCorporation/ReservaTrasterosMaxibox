@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useWizard } from '../WizardContext'
 import { Button } from '../../components/Button'
 import { PriceSummaryCard } from '../components/PriceSummaryCard'
-import { createReservation } from '../../services/api'
+import { confirmFullReservation } from '../../services/api'
 import { getStartDate, formatDate, formatEuros, calcProportionalPayment } from '../utils'
 
 const PAYMENT_LABELS: Record<string, string> = {
@@ -12,31 +12,28 @@ const PAYMENT_LABELS: Record<string, string> = {
 }
 
 const START_MODE_LABELS: Record<string, string> = {
-  immediate:   'Hoy (con pago proporcional)',
-  anniversary: 'Hoy (cobro en aniversario)',
+  immediate:   'Pago proporcional hoy — cobro el día 1 de cada mes',
+  anniversary: 'Sin pago hoy — cobro el mismo día del mes en que contratas',
 }
 
-// ─── Success screen ───────────────────────────────────────────────────
+// ─── Pantalla de éxito ────────────────────────────────────────────────
 
 function SuccessScreen({ email }: { email?: string }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-[65vh] px-4 py-16 text-center space-y-6">
-      {/* Checkmark animado */}
       <div className="w-24 h-24 rounded-full bg-green-100 flex items-center justify-center shadow-lg shadow-green-100">
         <svg className="w-12 h-12 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
         </svg>
       </div>
 
-      {/* Título */}
       <div className="space-y-2">
-        <h2 className="text-3xl font-bold text-gray-900">¡Contrato firmado!</h2>
+        <h2 className="text-3xl font-bold text-gray-900">¡Reserva confirmada!</h2>
         <p className="text-gray-500 text-lg max-w-md mx-auto">
-          Tu reserva se ha completado correctamente. Tienes toda la información disponible en tu área de cliente.
+          Tu trastero queda reservado. El contrato está activo y tienes acceso desde ahora.
         </p>
       </div>
 
-      {/* Credenciales */}
       <div className="bg-blue-50 border border-blue-200 rounded-3xl p-6 text-left max-w-sm w-full space-y-3">
         <p className="text-sm font-semibold text-blue-800 flex items-center gap-2">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -49,23 +46,18 @@ function SuccessScreen({ email }: { email?: string }) {
             <span className="text-gray-500">Usuario</span>
             <span className="font-mono font-semibold text-gray-900">{email ?? 'tu email'}</span>
           </div>
-          <div className="flex justify-between items-center bg-white rounded-xl px-4 py-2.5 border border-blue-100">
-            <span className="text-gray-500">Contraseña</span>
-            <span className="font-mono font-semibold text-gray-900">Trastero2024</span>
-          </div>
         </div>
         <p className="text-xs text-blue-600">
-          Podrás cambiar la contraseña desde el área de cliente en cualquier momento.
+          Recibirás un correo con los datos de acceso al área de cliente.
         </p>
       </div>
 
-      {/* Próximos pasos */}
       <div className="bg-gray-50 rounded-3xl border border-gray-200 p-6 text-left max-w-sm w-full space-y-2.5">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Próximos pasos</p>
         <ul className="text-sm text-gray-700 space-y-2">
           <li className="flex gap-2.5">
             <span className="text-lg leading-5">📧</span>
-            <span>Revisa tu correo — contrato PDF + credenciales de acceso</span>
+            <span>Revisa tu correo — contrato PDF y credenciales de acceso</span>
           </li>
           <li className="flex gap-2.5">
             <span className="text-lg leading-5">🔑</span>
@@ -78,7 +70,6 @@ function SuccessScreen({ email }: { email?: string }) {
         </ul>
       </div>
 
-      {/* CTA principal */}
       <a
         href="/"
         className="inline-flex items-center gap-2 bg-blue-600 text-white px-10 py-3.5 rounded-2xl font-semibold text-base hover:bg-blue-700 active:scale-95 transition-all shadow-lg shadow-blue-200"
@@ -92,16 +83,19 @@ function SuccessScreen({ email }: { email?: string }) {
   )
 }
 
-// ─── Main component ───────────────────────────────────────────────────
+// ─── Componente principal ─────────────────────────────────────────────
 
 export function SummaryStep() {
   const { state, dispatch } = useWizard()
-  const { tenant, selectedUnits, startMode, customer, paymentMethod, promotionId, confirmed } = state
+  const {
+    tenant, selectedUnits, startMode, customer, paymentMethod,
+    promotionId, confirmed, leadId, dniPhotoPath, signature,
+  } = state
 
-  const [promoInput, setPromoInput] = useState(promotionId ?? '')
+  const [promoInput, setPromoInput]   = useState(promotionId ?? '')
   const [promoApplied, setPromoApplied] = useState(Boolean(promotionId))
-  const [loading, setLoading]           = useState(false)
-  const [submitError, setSubmitError]   = useState<string | null>(null)
+  const [loading, setLoading]          = useState(false)
+  const [submitError, setSubmitError]  = useState<string | null>(null)
 
   if (confirmed) return <SuccessScreen email={customer?.email} />
 
@@ -111,6 +105,18 @@ export function SummaryStep() {
         <p className="text-gray-500">Faltan datos. Vuelve al paso anterior.</p>
         <Button variant="secondary" onClick={() => dispatch({ type: 'PREV_STEP' })}>
           Volver
+        </Button>
+      </div>
+    )
+  }
+
+  // Verificar que el contrato esté firmado
+  if (!signature) {
+    return (
+      <div className="text-center py-20 space-y-4">
+        <p className="text-gray-500">Debes firmar el contrato antes de continuar.</p>
+        <Button variant="secondary" onClick={() => dispatch({ type: 'PREV_STEP' })}>
+          Volver a firmar
         </Button>
       </div>
     )
@@ -133,6 +139,11 @@ export function SummaryStep() {
     setPromoApplied(false)
   }
 
+  /**
+   * Confirmar la reserva:
+   * Llama a confirmFullReservation por cada trastero seleccionado.
+   * Solo cuando el backend confirma → el trastero pasa a OCCUPIED.
+   */
   const handleConfirm = async () => {
     setSubmitError(null)
     setLoading(true)
@@ -141,15 +152,29 @@ export function SummaryStep() {
 
     for (const unit of selectedUnits) {
       try {
-        await createReservation({
-          tenantSlug:    tenant,
-          storageUnitId: unit.id,
-          firstName:     customer.firstName,
-          lastName:      customer.lastName,
-          email:         customer.email,
-          phone:         customer.phone,
+        await confirmFullReservation({
+          tenantSlug:      tenant,
+          storageUnitId:   unit.id,
+          firstName:       customer.firstName,
+          lastName:        customer.lastName,
+          dni:             customer.dni,
+          phone:           customer.phone,
+          email:           customer.email,
+          address:         customer.address,
+          city:            customer.city,
+          postalCode:      customer.postalCode,
+          startMode,
+          shelfIncluded:   customer.shelfIncluded,
+          premiumInsurance: customer.premiumInsurance,
+          goldInsurance:   customer.goldInsurance,
+          paymentMethod,
+          monthlyPrice:    unit.price,
+          leadId:          leadId ?? undefined,
+          dniPhotoPath:    dniPhotoPath ?? undefined,
+          promotionId:     promotionId ?? undefined,
         })
-      } catch {
+      } catch (err) {
+        console.error(`[Summary] Error confirmando trastero #${unit.number}:`, err)
         failed.push(unit.number)
       }
     }
@@ -157,16 +182,19 @@ export function SummaryStep() {
     setLoading(false)
 
     if (failed.length === selectedUnits.length) {
-      setSubmitError(
-        `No se pudo completar ninguna reserva. Verifica tu conexión e inténtalo de nuevo.`
-      )
+      const errMsg = failed.length === 1
+        ? 'No se pudo completar la reserva. El trastero puede haber sido reservado por otra persona. Por favor, selecciona otro trastero.'
+        : 'No se pudo completar ninguna reserva. Verifica tu conexión e inténtalo de nuevo.'
+      setSubmitError(errMsg)
       return
     }
+
     if (failed.length > 0) {
       setSubmitError(
         `Se reservaron ${selectedUnits.length - failed.length} de ${selectedUnits.length} trasteros. Error en: #${failed.join(', #')}`
       )
     }
+
     dispatch({ type: 'CONFIRM' })
   }
 
@@ -179,6 +207,14 @@ export function SummaryStep() {
           <div>
             <h2 className="text-2xl font-semibold text-gray-900 mb-1">Resumen de tu reserva</h2>
             <p className="text-gray-500 text-sm">Revisa todos los detalles antes de confirmar</p>
+          </div>
+
+          {/* Estado de la firma */}
+          <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-2xl px-4 py-3 text-sm text-green-700">
+            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            Contrato firmado correctamente
           </div>
 
           {/* Trasteros */}
@@ -196,29 +232,29 @@ export function SummaryStep() {
             </div>
           </SummarySection>
 
-          {/* Dates & payment */}
+          {/* Contrato */}
           <SummarySection title="Contrato">
             <SummaryRow label="Fecha de inicio" value={formatDate(startDateIso)} />
             <SummaryRow label="Modalidad" value={START_MODE_LABELS[startMode]} />
             <SummaryRow label="Mensualidad" value={`${formatEuros(totalMonthly)}/mes`} />
             <SummaryRow
               label="Pago hoy"
-              value={todayPayment > 0 ? `${formatEuros(todayPayment)} (proporcional)` : '0,00 € (primer cobro el día 1)'}
+              value={todayPayment > 0
+                ? `${formatEuros(todayPayment)} (proporcional)`
+                : '0,00 € (primer cobro el día 1)'}
             />
           </SummarySection>
 
-          {/* Customer */}
+          {/* Datos personales */}
           <SummarySection title="Datos personales">
             <SummaryRow label="Nombre" value={`${customer.firstName} ${customer.lastName}`} />
             <SummaryRow label="DNI / NIE" value={customer.dni} />
             <SummaryRow label="Teléfono" value={customer.phone} />
-            {customer.email && <SummaryRow label="Email" value={customer.email} />}
-            {customer.address && (
-              <SummaryRow
-                label="Dirección"
-                value={[customer.address, customer.city, customer.postalCode].filter(Boolean).join(', ')}
-              />
-            )}
+            <SummaryRow label="Email" value={customer.email} />
+            <SummaryRow
+              label="Dirección"
+              value={[customer.address, customer.city, customer.postalCode].filter(Boolean).join(', ')}
+            />
           </SummarySection>
 
           {/* Extras */}
@@ -230,12 +266,12 @@ export function SummaryStep() {
             </SummarySection>
           )}
 
-          {/* Payment method */}
+          {/* Método de pago */}
           <SummarySection title="Método de pago">
-            <SummaryRow label="Forma de pago" value={PAYMENT_LABELS[paymentMethod]} />
+            <SummaryRow label="Forma de pago" value={PAYMENT_LABELS[paymentMethod] ?? paymentMethod} />
           </SummarySection>
 
-          {/* Promo code */}
+          {/* Código promocional */}
           <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-5">
             <p className="text-sm font-semibold text-gray-900 mb-3">Código promocional</p>
             {promoApplied ? (
@@ -297,8 +333,8 @@ export function SummaryStep() {
         <Button
           variant="secondary"
           onClick={() => dispatch({ type: 'PREV_STEP' })}
-          className="!rounded-2xl"
           disabled={loading}
+          className="!rounded-2xl"
         >
           <svg className="mr-2 w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -315,14 +351,14 @@ export function SummaryStep() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           )}
-          Finalizar contratación
+          Confirmar reserva
         </Button>
       </div>
     </div>
   )
 }
 
-// ─── Helper sub-components ────────────────────────────────────────────
+// ─── Subcomponentes ───────────────────────────────────────────────────
 
 function SummarySection({ title, children }: { title: string; children: React.ReactNode }) {
   return (

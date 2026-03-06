@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, type ReactNode } from 'react'
-import type { StorageUnit, CustomerData, PaymentMethod, StartMode } from '../types'
+import type { StorageUnit, CustomerData, PaymentMethod, StartMode, TenantSettings } from '../types'
 
 // ─── State ────────────────────────────────────────────────────────────
 
@@ -13,6 +13,16 @@ export interface WizardState {
   paymentMethod: PaymentMethod | null
   promotionId: string | null
   confirmed: boolean
+
+  // ── Nuevos campos ────────────────────────────────────────────────
+  /** Configuración del tenant cargada al inicio (billingMode, requireDniUpload) */
+  tenantSettings: TenantSettings | null
+  /** ID del lead (PotentialClient) creado cuando el cliente rellena el formulario */
+  leadId: string | null
+  /** Archivo de la foto del DNI seleccionado por el cliente */
+  dniPhotoFile: File | null
+  /** Ruta en el servidor de la foto del DNI una vez subida */
+  dniPhotoPath: string | null
 }
 
 // ─── Actions ──────────────────────────────────────────────────────────
@@ -30,6 +40,15 @@ type WizardAction =
   | { type: 'SET_PROMOTION_ID'; id: string | null }
   | { type: 'CONFIRM' }
   | { type: 'RESET' }
+  | { type: 'SET_TENANT_SETTINGS'; settings: TenantSettings }
+  | { type: 'SET_LEAD_ID'; leadId: string }
+  | { type: 'SET_DNI_PHOTO_FILE'; file: File | null }
+  | { type: 'SET_DNI_PHOTO_PATH'; path: string | null }
+  /**
+   * Aplica la configuración del tenant: si billingMode no es BOTH,
+   * fuerza el startMode correspondiente y salta al paso 2.
+   */
+  | { type: 'APPLY_BILLING_MODE' }
 
 // ─── Reducer ──────────────────────────────────────────────────────────
 
@@ -44,6 +63,10 @@ function createInitialState(tenant: string): WizardState {
     paymentMethod: null,
     promotionId: null,
     confirmed: false,
+    tenantSettings: null,
+    leadId: null,
+    dniPhotoFile: null,
+    dniPhotoPath: null,
   }
 }
 
@@ -80,6 +103,21 @@ function reducer(state: WizardState, action: WizardAction): WizardState {
       return { ...state, confirmed: true }
     case 'RESET':
       return createInitialState(state.tenant)
+    case 'SET_TENANT_SETTINGS':
+      return { ...state, tenantSettings: action.settings }
+    case 'SET_LEAD_ID':
+      return { ...state, leadId: action.leadId }
+    case 'SET_DNI_PHOTO_FILE':
+      return { ...state, dniPhotoFile: action.file }
+    case 'SET_DNI_PHOTO_PATH':
+      return { ...state, dniPhotoPath: action.path }
+    case 'APPLY_BILLING_MODE': {
+      const bm = state.tenantSettings?.billingMode
+      if (!bm || bm === 'BOTH') return state
+      // Si solo hay una opción, la forzamos y saltamos el paso 1
+      const forced: StartMode = bm === 'SAME_DAY' ? 'anniversary' : 'immediate'
+      return { ...state, startMode: forced, step: 2 }
+    }
     default:
       return state
   }

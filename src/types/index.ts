@@ -13,9 +13,9 @@ export interface RawStorageUnit {
   number: number
   shapeId: string
   status: UnitStatus
-  type: string           // "STANDARD", "PREMIUM", etc. — varía por empresa
+  type: string
   price: number
-  dimensions?: string    // "2x1", "3x1", "5x1" — formato "AnchoxAlto"
+  dimensions?: string
   width?: number
   height?: number
   length?: number
@@ -25,6 +25,8 @@ export interface RawStorageUnit {
 export interface PlanResponse {
   svgUrl: string
   storageUnits: RawStorageUnit[]
+  billingMode?: BillingMode
+  requireDniUpload?: boolean
 }
 
 // ─── Unidad enriquecida en el frontend ────────────────────────────────
@@ -36,8 +38,8 @@ export interface StorageUnit {
   status: UnitStatus
   type: string
   price: number
-  dimensions: number       // m² — calculado en frontend desde "2x1" → 2
-  dimensionsLabel: string  // "2x1" — texto original para mostrar
+  dimensions: number
+  dimensionsLabel: string
 }
 
 // ─── Reservas (API pública simple) ───────────────────────────────────
@@ -57,12 +59,24 @@ export interface ReservationSuccess {
   message?: string
 }
 
+// ─── Configuración del tenant (CRM) ─────────────────────────────────
+
+/** Modalidad de cobro mensual configurada por el propietario en el CRM */
+export type BillingMode = 'SAME_DAY' | 'FIRST_OF_MONTH' | 'BOTH'
+
+/** Configuración pública del tenant para el wizard de reservas */
+export interface TenantSettings {
+  name: string
+  billingMode: BillingMode
+  requireDniUpload: boolean
+}
+
 // ─── Wizard ───────────────────────────────────────────────────────────
 
 export type PaymentMethod = 'card' | 'transfer' | 'cash'
 
-/** immediate  → paga proporcional hoy, domiciliación el día 1 del mes siguiente
- *  anniversary → sin pago hoy, domiciliación el mismo día del mes en que contrata */
+/** immediate  → paga proporcional hoy, domiciliación el día 1 del mes siguiente (FIRST_OF_MONTH)
+ *  anniversary → sin pago hoy, domiciliación el mismo día del mes en que contrata (SAME_DAY) */
 export type StartMode = 'immediate' | 'anniversary'
 
 export interface CustomerData {
@@ -93,4 +107,54 @@ export interface FullReservationPayload {
   payment: {
     paymentMethod: PaymentMethod
   }
+}
+
+// ─── Payloads nuevos ──────────────────────────────────────────────────
+
+export interface CreateLeadPayload {
+  tenantSlug: string
+  firstName: string
+  lastName: string
+  email: string
+  phone: string
+  storageUnitId?: string
+  currentStep?: string
+}
+
+export interface CreateLeadResponse {
+  leadId: string
+}
+
+export interface ConfirmFullReservationPayload {
+  tenantSlug: string
+  storageUnitId: string
+  firstName: string
+  lastName: string
+  dni: string
+  phone: string
+  email: string
+  address: string
+  city: string
+  postalCode: string
+  startMode: StartMode
+  shelfIncluded?: boolean
+  premiumInsurance?: boolean
+  goldInsurance?: boolean
+  paymentMethod?: PaymentMethod
+  monthlyPrice?: number
+  leadId?: string
+  dniPhotoPath?: string
+  promotionId?: string
+}
+
+export interface ConfirmFullReservationResponse {
+  success: boolean
+  message: string
+}
+
+export interface UploadDniPhotoResponse {
+  success: boolean
+  filePath: string
+  originalName: string
+  size: number
 }

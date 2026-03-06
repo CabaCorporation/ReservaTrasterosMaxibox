@@ -7,6 +7,7 @@ import { CustomerFormStep } from './steps/CustomerFormStep'
 import { ContractStep } from './steps/ContractStep'
 import { PaymentStep } from './steps/PaymentStep'
 import { SummaryStep } from './steps/SummaryStep'
+import { getTenantSettings } from '../services/api'
 
 function readTenant(): string {
   return new URLSearchParams(window.location.search).get('tenant') ?? 'maxibox'
@@ -15,7 +16,27 @@ function readTenant(): string {
 // ─── Inner content (has access to context) ───────────────────────────
 
 function WizardContent() {
-  const { state } = useWizard()
+  const { state, dispatch } = useWizard()
+
+  // Cargar la configuración del tenant al montar el wizard
+  useEffect(() => {
+    let cancelled = false
+
+    getTenantSettings(state.tenant)
+      .then(settings => {
+        if (cancelled) return
+        dispatch({ type: 'SET_TENANT_SETTINGS', settings })
+        // Si el billing mode no es BOTH, seleccionar automáticamente y saltar al paso 2
+        dispatch({ type: 'APPLY_BILLING_MODE' })
+      })
+      .catch(err => {
+        // Si falla la carga de settings, el wizard funciona con BOTH por defecto
+        console.warn('[Wizard] No se pudo cargar la configuración del tenant:', err)
+      })
+
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.tenant])
 
   // Scroll to top on each step change
   useEffect(() => {
@@ -36,7 +57,6 @@ function WizardContent() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Stepper currentStep={state.step} />
-      {/* key drives re-mount animation per step */}
       <div key={state.step} className="wizard-step-enter">
         {stepEl}
       </div>

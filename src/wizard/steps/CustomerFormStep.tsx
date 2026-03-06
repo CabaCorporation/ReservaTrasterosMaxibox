@@ -1,13 +1,15 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { useWizard } from '../WizardContext'
 import { Button } from '../../components/Button'
 import { PriceSummaryCard } from '../components/PriceSummaryCard'
+import { createLead, uploadDniPhoto } from '../../services/api'
 import type { CustomerData } from '../../types'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const DNI_RE   = /^[0-9]{8}[A-Za-z]$|^[XYZxyz][0-9]{7}[A-Za-z]$/
+const POSTAL_RE = /^[0-9]{4,6}$/
 
-type FormErrors = Partial<Record<keyof CustomerData, string>>
+type FormErrors = Partial<Record<keyof CustomerData | 'dniPhoto', string>>
 
 const EMPTY: CustomerData = {
   firstName: '',
@@ -23,34 +25,32 @@ const EMPTY: CustomerData = {
   goldInsurance: false,
 }
 
-function validate(f: CustomerData): FormErrors {
+function validate(f: CustomerData, requireDni: boolean): FormErrors {
   const e: FormErrors = {}
-  if (!f.firstName.trim())  e.firstName  = 'El nombre es obligatorio'
-  if (!f.lastName.trim())   e.lastName   = 'Los apellidos son obligatorios'
-  if (!f.dni.trim())        e.dni        = 'El DNI es obligatorio'
-  else if (!DNI_RE.test(f.dni.trim())) e.dni = 'DNI no válido (8 dígitos + letra)'
-  if (!f.phone.trim())      e.phone      = 'El teléfono es obligatorio'
-  if (f.email.trim() && !EMAIL_RE.test(f.email.trim()))
-    e.email = 'Email no válido'
+  if (!f.firstName.trim())   e.firstName   = 'El nombre es obligatorio'
+  if (!f.lastName.trim())    e.lastName    = 'Los apellidos son obligatorios'
+  if (!f.dni.trim())         e.dni         = 'El DNI/NIE es obligatorio'
+  else if (!DNI_RE.test(f.dni.trim())) e.dni = 'DNI no válido (8 dígitos + letra, o NIE)'
+  if (!f.phone.trim())       e.phone       = 'El teléfono es obligatorio'
+  if (!f.email.trim())       e.email       = 'El email es obligatorio'
+  else if (!EMAIL_RE.test(f.email.trim())) e.email = 'Email no válido'
+  if (!f.address.trim())     e.address     = 'La dirección es obligatoria'
+  if (!f.city.trim())        e.city        = 'La ciudad es obligatoria'
+  if (!f.postalCode.trim())  e.postalCode  = 'El código postal es obligatorio'
+  else if (!POSTAL_RE.test(f.postalCode.trim())) e.postalCode = 'Código postal no válido'
+  if (requireDni) {
+    // La validación del archivo se hace por separado
+  }
   return e
 }
 
+// ─── Subcomponentes ───────────────────────────────────────────────────
+
 function FieldInput({
-  label,
-  value,
-  onChange,
-  error,
-  type = 'text',
-  placeholder,
-  required,
+  label, value, onChange, error, type = 'text', placeholder, required,
 }: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-  error?: string
-  type?: string
-  placeholder?: string
-  required?: boolean
+  label: string; value: string; onChange: (v: string) => void
+  error?: string; type?: string; placeholder?: string; required?: boolean
 }) {
   return (
     <div>
@@ -75,24 +75,16 @@ function FieldInput({
 }
 
 function CheckboxCard({
-  checked,
-  onChange,
-  label,
-  description,
+  checked, onChange, label, description,
 }: {
-  checked: boolean
-  onChange: (v: boolean) => void
-  label: string
-  description: string
+  checked: boolean; onChange: (v: boolean) => void; label: string; description: string
 }) {
   return (
     <button
       type="button"
       onClick={() => onChange(!checked)}
       className={`w-full text-left p-4 rounded-2xl border-2 transition-all duration-150 ${
-        checked
-          ? 'border-blue-500 bg-blue-50'
-          : 'border-gray-200 bg-white hover:border-gray-300'
+        checked ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300'
       }`}
     >
       <div className="flex items-start gap-3">
@@ -114,12 +106,113 @@ function CheckboxCard({
   )
 }
 
+// ─── Componente de subida de foto del DNI ─────────────────────────────
+
+function DniPhotoUpload({
+  file,
+  onChange,
+  error,
+  uploading,
+}: {
+  file: File | null
+  onChange: (f: File | null) => void
+  error?: string
+  uploading: boolean
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files?.[0] ?? null
+    onChange(selected)
+  }
+
+  const preview = file ? URL.createObjectURL(file) : null
+
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1.5">
+        Foto del DNI / NIE <span className="text-red-500">*</span>
+      </label>
+      <p className="text-xs text-gray-500 mb-3">
+        Sube una foto clara de la parte frontal de tu DNI o NIE. Formatos aceptados: JPG, PNG, WEBP. Máx. 10 MB.
+      </p>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/jpg,image/png,image/webp"
+        onChange={handleChange}
+        className="hidden"
+      />
+
+      {file ? (
+        <div className="border-2 border-blue-200 rounded-2xl overflow-hidden bg-blue-50">
+          {preview && (
+            <img
+              src={preview}
+              alt="Vista previa del DNI"
+              className="w-full max-h-48 object-contain"
+            />
+          )}
+          <div className="flex items-center justify-between px-4 py-3">
+            <div className="flex items-center gap-2 min-w-0">
+              {uploading ? (
+                <svg className="w-4 h-4 text-blue-500 animate-spin shrink-0" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4 text-green-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+              <span className="text-xs text-gray-600 truncate">{file.name}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => onChange(null)}
+              className="text-xs text-gray-400 hover:text-red-500 transition-colors shrink-0 ml-2"
+            >
+              Cambiar
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          className={`w-full border-2 border-dashed rounded-2xl py-6 flex flex-col items-center gap-2 transition-colors ${
+            error
+              ? 'border-red-300 bg-red-50 text-red-500'
+              : 'border-gray-300 bg-gray-50 text-gray-500 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-500'
+          }`}
+        >
+          <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          <span className="text-sm font-medium">Seleccionar foto del DNI</span>
+          <span className="text-xs">Haz clic o arrastra aquí</span>
+        </button>
+      )}
+
+      {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+    </div>
+  )
+}
+
+// ─── Componente principal ─────────────────────────────────────────────
+
 export function CustomerFormStep() {
   const { state, dispatch } = useWizard()
+  const requireDniUpload = state.tenantSettings?.requireDniUpload ?? false
   const initialData = state.customer ?? EMPTY
 
-  const [form, setForm]     = useState<CustomerData>(initialData)
-  const [errors, setErrors] = useState<FormErrors>({})
+  const [form, setForm]         = useState<CustomerData>(initialData)
+  const [errors, setErrors]     = useState<FormErrors>({})
+  const [dniFile, setDniFile]   = useState<File | null>(state.dniPhotoFile)
+  const [uploading, setUploading] = useState(false)
+  const [saving, setSaving]     = useState(false)
 
   const update = useCallback(
     <K extends keyof CustomerData>(field: K, value: CustomerData[K]) => {
@@ -129,11 +222,66 @@ export function CustomerFormStep() {
     []
   )
 
-  const handleContinue = () => {
-    const errs = validate(form)
-    if (Object.keys(errs).length > 0) { setErrors(errs); return }
-    dispatch({ type: 'SET_CUSTOMER', customer: form })
-    dispatch({ type: 'NEXT_STEP' })
+  const handleContinue = async () => {
+    // Validar todos los campos
+    const errs = validate(form, requireDniUpload)
+
+    if (requireDniUpload && !dniFile) {
+      errs.dniPhoto = 'La foto del DNI es obligatoria'
+    }
+
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs)
+      return
+    }
+
+    setSaving(true)
+
+    try {
+      // 1. Subir foto del DNI si es necesario
+      let dniPhotoPath: string | null = null
+      if (requireDniUpload && dniFile) {
+        setUploading(true)
+        try {
+          const uploadResult = await uploadDniPhoto(dniFile, state.tenant)
+          dniPhotoPath = uploadResult.filePath
+          dispatch({ type: 'SET_DNI_PHOTO_PATH', path: dniPhotoPath })
+        } catch (uploadErr) {
+          console.error('[CustomerForm] Error subiendo foto DNI:', uploadErr)
+          setErrors(prev => ({
+            ...prev,
+            dniPhoto: `Error al subir la foto: ${uploadErr instanceof Error ? uploadErr.message : 'Error desconocido'}`,
+          }))
+          return
+        } finally {
+          setUploading(false)
+        }
+      }
+
+      // 2. Guardar el archivo en el contexto (para referencia visual)
+      dispatch({ type: 'SET_DNI_PHOTO_FILE', file: dniFile })
+
+      // 3. Guardar datos del cliente en el contexto
+      dispatch({ type: 'SET_CUSTOMER', customer: form })
+
+      // 4. Crear lead en el backend (best-effort, no bloquea si falla)
+      const firstUnit = state.selectedUnits[0]
+      createLead({
+        tenantSlug: state.tenant,
+        firstName: form.firstName,
+        lastName: form.lastName,
+        email: form.email,
+        phone: form.phone,
+        storageUnitId: firstUnit?.id,
+        currentStep: 'FORM',
+      })
+        .then(res => dispatch({ type: 'SET_LEAD_ID', leadId: res.leadId }))
+        .catch(err => console.warn('[CustomerForm] No se pudo crear el lead:', err))
+
+      dispatch({ type: 'NEXT_STEP' })
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -144,13 +292,13 @@ export function CustomerFormStep() {
         <div className="flex-1 space-y-6">
           <div>
             <h2 className="text-2xl font-semibold text-gray-900 mb-1">Tus datos personales</h2>
-            <p className="text-gray-500 text-sm">Los campos marcados con * son obligatorios</p>
+            <p className="text-gray-500 text-sm">Todos los campos son obligatorios</p>
           </div>
 
-          {/* Required */}
+          {/* Datos obligatorios */}
           <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 space-y-4">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              Datos obligatorios
+              Datos personales <span className="text-red-500">*</span>
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FieldInput
@@ -185,13 +333,13 @@ export function CustomerFormStep() {
             </div>
           </div>
 
-          {/* Contact */}
+          {/* Contacto y dirección (ahora obligatorios) */}
           <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 space-y-4">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              Contacto y dirección
+              Contacto y dirección <span className="text-red-500">*</span>
             </p>
             <FieldInput
-              label="Email"
+              label="Email" required
               type="email"
               value={form.email}
               onChange={v => update('email', v)}
@@ -199,26 +347,44 @@ export function CustomerFormStep() {
               placeholder="ana@ejemplo.com"
             />
             <FieldInput
-              label="Dirección"
+              label="Dirección" required
               value={form.address}
               onChange={v => update('address', v)}
+              error={errors.address}
               placeholder="Calle Mayor 1, 2º A"
             />
             <div className="grid grid-cols-2 gap-4">
               <FieldInput
-                label="Ciudad"
+                label="Ciudad" required
                 value={form.city}
                 onChange={v => update('city', v)}
+                error={errors.city}
                 placeholder="Madrid"
               />
               <FieldInput
-                label="Código postal"
+                label="Código postal" required
                 value={form.postalCode}
                 onChange={v => update('postalCode', v)}
+                error={errors.postalCode}
                 placeholder="28001"
               />
             </div>
           </div>
+
+          {/* Foto del DNI (solo si está habilitado en el CRM) */}
+          {requireDniUpload && (
+            <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">
+                Verificación de identidad <span className="text-red-500">*</span>
+              </p>
+              <DniPhotoUpload
+                file={dniFile}
+                onChange={setDniFile}
+                error={errors.dniPhoto}
+                uploading={uploading}
+              />
+            </div>
+          )}
 
           {/* Extras */}
           <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 space-y-3">
@@ -263,6 +429,7 @@ export function CustomerFormStep() {
         <Button
           variant="secondary"
           onClick={() => dispatch({ type: 'PREV_STEP' })}
+          disabled={saving}
           className="!rounded-2xl"
         >
           <svg className="mr-2 w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -272,12 +439,17 @@ export function CustomerFormStep() {
         </Button>
         <Button
           onClick={handleContinue}
+          loading={saving}
           className="!px-8 !py-3 !rounded-2xl !text-base !font-semibold"
         >
-          Continuar
-          <svg className="ml-2 w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-          </svg>
+          {saving ? 'Guardando…' : (
+            <>
+              Continuar
+              <svg className="ml-2 w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </>
+          )}
         </Button>
       </div>
     </div>

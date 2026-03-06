@@ -1,14 +1,16 @@
 import { useWizard } from '../WizardContext'
 import { Button } from '../../components/Button'
-import type { StartMode } from '../../types'
+import type { StartMode, BillingMode } from '../../types'
 
-const OPTIONS: {
+// Opciones disponibles según la modalidad de cobro del tenant
+const ALL_OPTIONS: {
   mode: StartMode
   icon: string
   title: string
   subtitle: string
   detail: string
   badge?: string
+  billingModes: BillingMode[]  // en qué configuraciones aparece esta opción
 }[] = [
   {
     mode: 'immediate',
@@ -18,6 +20,7 @@ const OPTIONS: {
     detail:
       'Pagas hoy los días que quedan del mes actual (calculado proporcionalmente). A partir del mes siguiente, la mensualidad completa se domicilia el día 1 de cada mes.',
     badge: 'Más habitual',
+    billingModes: ['FIRST_OF_MONTH', 'BOTH'],
   },
   {
     mode: 'anniversary',
@@ -26,11 +29,20 @@ const OPTIONS: {
     subtitle: 'Cobro mensual el día que reserves cada mes',
     detail:
       'No pagas nada hoy. La mensualidad se cobra cada mes el mismo día en que firmas el contrato. Accedes al trastero desde este momento.',
+    billingModes: ['SAME_DAY', 'BOTH'],
   },
 ]
 
 export function StartModeStep() {
   const { state, dispatch } = useWizard()
+  const billingMode = state.tenantSettings?.billingMode ?? 'BOTH'
+
+  // Filtrar opciones según la configuración del tenant
+  const options = ALL_OPTIONS.filter(o => o.billingModes.includes(billingMode))
+
+  // Si solo hay una opción disponible, la seleccionamos automáticamente
+  // (normalmente este paso se saltará gracias a APPLY_BILLING_MODE en ReservationWizard)
+  const singleOption = options.length === 1 ? options[0] : null
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-12 space-y-10">
@@ -44,51 +56,66 @@ export function StartModeStep() {
         </p>
       </div>
 
-      {/* Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-        {OPTIONS.map(opt => {
-          const isSelected = state.startMode === opt.mode
-          return (
-            <button
-              key={opt.mode}
-              type="button"
-              onClick={() => dispatch({ type: 'SET_START_MODE', mode: opt.mode })}
-              className={`group relative text-left p-7 rounded-3xl border-2 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
-                isSelected
-                  ? 'border-blue-500 bg-blue-50 shadow-lg shadow-blue-100'
-                  : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-md'
-              }`}
-            >
-              {opt.badge && (
-                <span className="absolute top-4 left-7 text-xs font-semibold text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">
-                  {opt.badge}
-                </span>
-              )}
-              {isSelected && (
-                <div className="absolute top-4 right-4 w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center">
-                  <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-              )}
-              <span className={`text-3xl mb-4 block ${opt.badge ? 'mt-5' : ''}`}>{opt.icon}</span>
-              <h3 className={`text-xl font-semibold mb-1.5 ${isSelected ? 'text-blue-700' : 'text-gray-900'}`}>
-                {opt.title}
-              </h3>
-              <p className={`text-sm font-medium mb-3 ${isSelected ? 'text-blue-500' : 'text-gray-500'}`}>
-                {opt.subtitle}
-              </p>
-              <p className="text-sm text-gray-500 leading-relaxed">{opt.detail}</p>
-            </button>
-          )
-        })}
-      </div>
+      {/* Si solo hay una opción, mostramos info sin selector */}
+      {singleOption ? (
+        <div className="bg-blue-50 border-2 border-blue-200 rounded-3xl p-7 space-y-3">
+          <span className="text-3xl block">{singleOption.icon}</span>
+          <h3 className="text-xl font-semibold text-blue-700">{singleOption.title}</h3>
+          <p className="text-sm font-medium text-blue-500">{singleOption.subtitle}</p>
+          <p className="text-sm text-gray-500 leading-relaxed">{singleOption.detail}</p>
+        </div>
+      ) : (
+        /* Cards de selección (cuando billingMode = BOTH) */
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          {options.map(opt => {
+            const isSelected = state.startMode === opt.mode
+            return (
+              <button
+                key={opt.mode}
+                type="button"
+                onClick={() => dispatch({ type: 'SET_START_MODE', mode: opt.mode })}
+                className={`group relative text-left p-7 rounded-3xl border-2 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                  isSelected
+                    ? 'border-blue-500 bg-blue-50 shadow-lg shadow-blue-100'
+                    : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-md'
+                }`}
+              >
+                {opt.badge && (
+                  <span className="absolute top-4 left-7 text-xs font-semibold text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">
+                    {opt.badge}
+                  </span>
+                )}
+                {isSelected && (
+                  <div className="absolute top-4 right-4 w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center">
+                    <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                )}
+                <span className={`text-3xl mb-4 block ${opt.badge ? 'mt-5' : ''}`}>{opt.icon}</span>
+                <h3 className={`text-xl font-semibold mb-1.5 ${isSelected ? 'text-blue-700' : 'text-gray-900'}`}>
+                  {opt.title}
+                </h3>
+                <p className={`text-sm font-medium mb-3 ${isSelected ? 'text-blue-500' : 'text-gray-500'}`}>
+                  {opt.subtitle}
+                </p>
+                <p className="text-sm text-gray-500 leading-relaxed">{opt.detail}</p>
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {/* Navigation */}
       <div className="flex justify-end pt-2">
         <Button
-          disabled={!state.startMode}
-          onClick={() => dispatch({ type: 'NEXT_STEP' })}
+          disabled={!state.startMode && !singleOption}
+          onClick={() => {
+            if (singleOption && !state.startMode) {
+              dispatch({ type: 'SET_START_MODE', mode: singleOption.mode })
+            }
+            dispatch({ type: 'NEXT_STEP' })
+          }}
           className="!px-8 !py-3 !rounded-2xl !text-base !font-semibold"
         >
           Continuar

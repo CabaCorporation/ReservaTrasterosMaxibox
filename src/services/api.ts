@@ -6,6 +6,12 @@ import type {
   ReservationPayload,
   ReservationSuccess,
   FullReservationPayload,
+  TenantSettings,
+  CreateLeadPayload,
+  CreateLeadResponse,
+  ConfirmFullReservationPayload,
+  ConfirmFullReservationResponse,
+  UploadDniPhotoResponse,
 } from '../types'
 
 // ─── Anti-cache ───────────────────────────────────────────────────────
@@ -53,7 +59,7 @@ async function fetchApi<T>(
     let message = `Error ${res.status}`
     try {
       const json = JSON.parse(text)
-      if (json.message) message = json.message
+      if (json.message) message = Array.isArray(json.message) ? json.message.join(', ') : json.message
       else if (json.error) message = json.error
     } catch {
       if (text) message = text
@@ -73,59 +79,36 @@ async function fetchApi<T>(
 }
 
 // ─── Parseo de dimensions ─────────────────────────────────────────────
-// El backend envía dimensions como string: "2x1", "3x1", "5x1", etc.
-// Formato: "AnchoxAlto" → area = Ancho * Alto
 
 function parseDimensionsString(raw: string): number {
-  // Intentar formato "NxM" (con x, X, × o *)
   const match = raw.match(/^(\d+(?:[.,]\d+)?)\s*[xX×*]\s*(\d+(?:[.,]\d+)?)$/)
   if (match) {
     const a = parseFloat(match[1].replace(',', '.'))
     const b = parseFloat(match[2].replace(',', '.'))
-    if (!isNaN(a) && !isNaN(b) && a > 0 && b > 0) {
-      return a * b
-    }
+    if (!isNaN(a) && !isNaN(b) && a > 0 && b > 0) return a * b
   }
-  // Intentar como número directo ("6", "10.5")
   const num = parseFloat(raw.replace(',', '.'))
-  if (!isNaN(num) && num > 0) {
-    return num
-  }
+  if (!isNaN(num) && num > 0) return num
   return 0
 }
 
 function computeDimensions(raw: RawStorageUnit): number {
-  // 1. Si dimensions es string (formato del backend: "2x1", "3x1", etc.)
   if (typeof raw.dimensions === 'string' && raw.dimensions.length > 0) {
     const parsed = parseDimensionsString(raw.dimensions)
     if (parsed > 0) return parsed
   }
-  // 2. Si dimensions es número directo
-  if (typeof raw.dimensions === 'number' && raw.dimensions > 0) {
-    return raw.dimensions
-  }
-  // 3. Si envía area
-  if (typeof raw.area === 'number' && raw.area > 0) {
-    return raw.area
-  }
-  // 4. Si envía width + height
+  if (typeof raw.dimensions === 'number' && raw.dimensions > 0) return raw.dimensions
+  if (typeof raw.area === 'number' && raw.area > 0) return raw.area
   if (typeof raw.width === 'number' && raw.width > 0) {
-    if (typeof raw.height === 'number' && raw.height > 0) {
-      return raw.width * raw.height
-    }
-    if (typeof raw.length === 'number' && raw.length > 0) {
-      return raw.width * raw.length
-    }
+    if (typeof raw.height === 'number' && raw.height > 0) return raw.width * raw.height
+    if (typeof raw.length === 'number' && raw.length > 0) return raw.width * raw.length
   }
-  // 5. No se pudo calcular
-  console.warn(`[API] No se pudo calcular dimensions para trastero #${raw.number} (dimensions: ${JSON.stringify(raw.dimensions)}, type: ${raw.type})`)
+  console.warn(`[API] No se pudo calcular dimensions para trastero #${raw.number}`)
   return 0
 }
 
 function getDimensionsLabel(raw: RawStorageUnit): string {
-  if (typeof raw.dimensions === 'string' && raw.dimensions.length > 0) {
-    return raw.dimensions
-  }
+  if (typeof raw.dimensions === 'string' && raw.dimensions.length > 0) return raw.dimensions
   return `${computeDimensions(raw)} m²`
 }
 
@@ -174,22 +157,86 @@ export async function getPlan(
   }
 
   const enriched = data.storageUnits.map(enrichUnit)
-
-  console.debug('[API] getPlan resultado:', {
-    svgUrl: data.svgUrl ?? '(omitida)',
-    totalUnits: enriched.length,
-    dimensionsDistribution: [...new Set(enriched.map((u) => u.dimensions))].sort((a, b) => a - b),
-    sample: enriched.slice(0, 3).map((u) => ({
-      number: u.number,
-      shapeId: u.shapeId,
-      dimensions: u.dimensions,
-      dimensionsLabel: u.dimensionsLabel,
-      status: u.status,
-    })),
-  })
-
   return { svgUrl: typeof data.svgUrl === 'string' ? data.svgUrl : '', storageUnits: enriched }
 }
+
+/** Carga la configuración del tenant para el wizard de reservas. */
+export async function getTenantSettings(tenantSlug: string): Promise<TenantSettings> {
+  return fetchApi<TenantSettings>(
+    `/api/public/reservations/settings/${encodeURIComponent(tenantSlug)}`
+  )
+}
+
+/** Crea un lead (PotentialClient) cuando el cliente rellena sus datos. */
+export async function createLead(
+  payload: CreateLeadPayload
+): Promise<CreateLeadResponse> {
+  return fetchApi<CreateLeadResponse>('/api/public/reservations/leads', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+/** Marca un lead como abandonado en el paso indicado. */
+export async function abandonLead(
+  leadId: string,
+  tenantSlug: string,
+  abandonedStep: string
+): Promise<void> {
+  try {
+    await fetchApi(`/api/public/reservations/leads/${encodeURIComponent(leadId)}/abandon`, {
+      method: 'PATCH',
+      body: JSON.stringify({ tenantSlug, abandonedStep }),
+    })
+  } catch (err) {
+    console.warn('[API] No se pudo marcar el lead como abandonado:', err)
+  }
+}
+
+/**
+ * Confirma la reserva completa tras firma y selección de pago.
+ * Crea el Cliente + Contrato, pone el trastero OCCUPIED.
+ */
+export async function confirmFullReservation(
+  payload: ConfirmFullReservationPayload
+): Promise<ConfirmFullReservationResponse> {
+  return fetchApi<ConfirmFullReservationResponse>('/api/public/reservations/confirm-full', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+/** Sube la foto del DNI. Devuelve la ruta pública del archivo. */
+export async function uploadDniPhoto(
+  file: File,
+  tenantSlug: string
+): Promise<UploadDniPhotoResponse> {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('tenantSlug', tenantSlug)
+
+  const fullUrl = `${API_BASE}/api/public/uploads/dni`
+  const res = await fetch(fullUrl, {
+    method: 'POST',
+    cache: 'no-store',
+    headers: NO_CACHE_HEADERS,
+    body: formData,
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    let message = `Error ${res.status}`
+    try {
+      const json = JSON.parse(text)
+      if (json.message) message = Array.isArray(json.message) ? json.message.join(', ') : json.message
+    } catch { /* */ }
+    throw new Error(message)
+  }
+
+  return res.json() as Promise<UploadDniPhotoResponse>
+}
+
+// ── Funciones legacy (se mantienen por compatibilidad) ────────────────
 
 export async function createReservation(
   payload: ReservationPayload
@@ -232,7 +279,6 @@ export function getSvgFullUrl(svgUrl: string): string {
   }
   if (svgUrl.startsWith('http')) return svgUrl
   const path = svgUrl.startsWith('/') ? svgUrl : `/${svgUrl}`
-  // Los SVG locales compilados por Vite se sirven desde el propio frontend.
   if (!path.startsWith('/planos/')) return path
   return API_BASE ? `${API_BASE}${path}` : path
 }
