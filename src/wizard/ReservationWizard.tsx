@@ -4,6 +4,7 @@ import { Stepper } from './components/Stepper'
 import { StartModeStep } from './steps/StartModeStep'
 import { StorageSelectionStep } from './steps/StorageSelectionStep'
 import { CustomerFormStep } from './steps/CustomerFormStep'
+import { ContractStep } from './steps/ContractStep'
 import { PaymentStep } from './steps/PaymentStep'
 import { SummaryStep } from './steps/SummaryStep'
 
@@ -26,8 +27,9 @@ function WizardContent() {
       case 1: return <StartModeStep />
       case 2: return <StorageSelectionStep />
       case 3: return <CustomerFormStep />
-      case 4: return <PaymentStep />
-      case 5: return <SummaryStep />
+      case 4: return <ContractStep />
+      case 5: return <PaymentStep />
+      case 6: return <SummaryStep />
     }
   })()
 

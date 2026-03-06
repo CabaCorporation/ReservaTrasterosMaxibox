@@ -4,8 +4,9 @@ const STEPS = [
   { id: 1, label: 'Inicio' },
   { id: 2, label: 'Trastero' },
   { id: 3, label: 'Datos' },
-  { id: 4, label: 'Pago' },
-  { id: 5, label: 'Confirmación' },
+  { id: 4, label: 'Contrato' },
+  { id: 5, label: 'Pago' },
+  { id: 6, label: 'Confirmación' },
 ] as const
 
 interface StepperProps {

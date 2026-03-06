@@ -5,10 +5,11 @@ import type { StorageUnit, CustomerData, PaymentMethod, StartMode } from '../typ
 
 export interface WizardState {
   tenant: string
-  step: 1 | 2 | 3 | 4 | 5
+  step: 1 | 2 | 3 | 4 | 5 | 6
   startMode: StartMode | null
   selectedUnits: StorageUnit[]
   customer: CustomerData | null
+  signature: string | null   // dataURL PNG de la firma manuscrita
   paymentMethod: PaymentMethod | null
   promotionId: string | null
   confirmed: boolean
@@ -24,6 +25,7 @@ type WizardAction =
   | { type: 'TOGGLE_UNIT'; unit: StorageUnit }
   | { type: 'CLEAR_UNITS' }
   | { type: 'SET_CUSTOMER'; customer: CustomerData }
+  | { type: 'SET_SIGNATURE'; signature: string }
   | { type: 'SET_PAYMENT_METHOD'; method: PaymentMethod }
   | { type: 'SET_PROMOTION_ID'; id: string | null }
   | { type: 'CONFIRM' }
@@ -38,6 +40,7 @@ function createInitialState(tenant: string): WizardState {
     startMode: null,
     selectedUnits: [],
     customer: null,
+    signature: null,
     paymentMethod: null,
     promotionId: null,
     confirmed: false,
@@ -47,7 +50,7 @@ function createInitialState(tenant: string): WizardState {
 function reducer(state: WizardState, action: WizardAction): WizardState {
   switch (action.type) {
     case 'NEXT_STEP':
-      return { ...state, step: Math.min(5, state.step + 1) as WizardState['step'] }
+      return { ...state, step: Math.min(6, state.step + 1) as WizardState['step'] }
     case 'PREV_STEP':
       return { ...state, step: Math.max(1, state.step - 1) as WizardState['step'] }
     case 'GO_STEP':
@@ -67,6 +70,8 @@ function reducer(state: WizardState, action: WizardAction): WizardState {
       return { ...state, selectedUnits: [] }
     case 'SET_CUSTOMER':
       return { ...state, customer: action.customer }
+    case 'SET_SIGNATURE':
+      return { ...state, signature: action.signature }
     case 'SET_PAYMENT_METHOD':
       return { ...state, paymentMethod: action.method }
     case 'SET_PROMOTION_ID':

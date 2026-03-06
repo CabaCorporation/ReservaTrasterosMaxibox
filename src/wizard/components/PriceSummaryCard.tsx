@@ -98,7 +98,7 @@ export function PriceSummaryCard({
               <span className="font-semibold text-gray-900">{formatEuros(todayPayment)}</span>
             </div>
           )}
-          {startMode === 'next_month' && (
+          {startMode === 'anniversary' && (
             <div className="flex justify-between text-sm text-gray-600">
               <span>Pago hoy</span>
               <span className="font-semibold text-green-600">0,00 €</span>

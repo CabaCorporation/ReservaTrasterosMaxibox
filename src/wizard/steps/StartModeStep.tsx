@@ -8,22 +8,24 @@ const OPTIONS: {
   title: string
   subtitle: string
   detail: string
+  badge?: string
 }[] = [
   {
     mode: 'immediate',
     icon: '⚡',
-    title: 'Entrar hoy',
-    subtitle: 'Pago proporcional + domiciliación mensual',
+    title: 'Reservar con pago proporcional',
+    subtitle: 'Cobro mensual el día 1 de cada mes',
     detail:
-      'Pagas hoy los días que restan del mes en curso, calculado proporcionalmente. La domiciliación mensual completa comienza el día 1 del mes siguiente.',
+      'Pagas hoy los días que quedan del mes actual (calculado proporcionalmente). A partir del mes siguiente, la mensualidad completa se domicilia el día 1 de cada mes.',
+    badge: 'Más habitual',
   },
   {
-    mode: 'next_month',
+    mode: 'anniversary',
     icon: '📅',
-    title: 'Entrar el mes siguiente',
-    subtitle: 'Primer cobro el día 1 del próximo mes',
+    title: 'Reservar sin pago inicial',
+    subtitle: 'Cobro mensual el día que reserves cada mes',
     detail:
-      'No pagas nada hoy. El primer cobro mensual se realizará el día 1 del mes que viene. Accedes al trastero desde esa fecha.',
+      'No pagas nada hoy. La mensualidad se cobra cada mes el mismo día en que firmas el contrato. Accedes al trastero desde este momento.',
   },
 ]
 
@@ -57,6 +59,11 @@ export function StartModeStep() {
                   : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-md'
               }`}
             >
+              {opt.badge && (
+                <span className="absolute top-4 left-7 text-xs font-semibold text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">
+                  {opt.badge}
+                </span>
+              )}
               {isSelected && (
                 <div className="absolute top-4 right-4 w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center">
                   <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
@@ -64,7 +71,7 @@ export function StartModeStep() {
                   </svg>
                 </div>
               )}
-              <span className="text-3xl mb-4 block">{opt.icon}</span>
+              <span className={`text-3xl mb-4 block ${opt.badge ? 'mt-5' : ''}`}>{opt.icon}</span>
               <h3 className={`text-xl font-semibold mb-1.5 ${isSelected ? 'text-blue-700' : 'text-gray-900'}`}>
                 {opt.title}
               </h3>

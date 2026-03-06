@@ -204,7 +204,7 @@ export async function createFullReservation(
   tenantId: string,
   payload: FullReservationPayload
 ): Promise<{ id?: string; message?: string }> {
-  return fetchApi('/api/reservations', {
+  return fetchApi('/api/public/reservations', {
     method: 'POST',
     headers: { 'x-tenant-id': tenantId },
     body: JSON.stringify(payload),

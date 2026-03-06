@@ -61,7 +61,9 @@ export interface ReservationSuccess {
 
 export type PaymentMethod = 'card' | 'transfer' | 'cash'
 
-export type StartMode = 'immediate' | 'next_month'
+/** immediate  → paga proporcional hoy, domiciliación el día 1 del mes siguiente
+ *  anniversary → sin pago hoy, domiciliación el mismo día del mes en que contrata */
+export type StartMode = 'immediate' | 'anniversary'
 
 export interface CustomerData {
   firstName: string

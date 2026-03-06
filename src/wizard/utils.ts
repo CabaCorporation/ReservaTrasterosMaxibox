@@ -7,13 +7,19 @@ export function calcProportionalPayment(monthlyPrice: number): number {
   return Math.round((monthlyPrice / daysInMonth) * daysRemaining * 100) / 100
 }
 
-export function getStartDate(startMode: StartMode): string {
-  const today = new Date()
+export function getStartDate(_startMode: StartMode): string {
+  // Ambos modos comienzan hoy; la diferencia es sólo el modelo de cobro
+  return new Date().toISOString().split('T')[0]
+}
+
+export function getBillingDescription(startMode: StartMode): string {
   if (startMode === 'immediate') {
-    return today.toISOString().split('T')[0]
+    const next = new Date()
+    next.setMonth(next.getMonth() + 1, 1)
+    return `El día 1 de cada mes (primer cobro completo el 1 de ${next.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })})`
   }
-  const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1)
-  return nextMonth.toISOString().split('T')[0]
+  const today = new Date()
+  return `El día ${today.getDate()} de cada mes (primer cobro el ${today.getDate()} del mes siguiente)`
 }
 
 export function formatEuros(amount: number): string {

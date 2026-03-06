@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useWizard } from '../WizardContext'
 import { Button } from '../../components/Button'
 import { PriceSummaryCard } from '../components/PriceSummaryCard'
-import { createFullReservation } from '../../services/api'
+import { createReservation } from '../../services/api'
 import { getStartDate, formatDate, formatEuros, calcProportionalPayment } from '../utils'
 
 const PAYMENT_LABELS: Record<string, string> = {
@@ -12,37 +12,76 @@ const PAYMENT_LABELS: Record<string, string> = {
 }
 
 const START_MODE_LABELS: Record<string, string> = {
-  immediate:  'Hoy',
-  next_month: 'Día 1 del mes siguiente',
+  immediate:   'Hoy (con pago proporcional)',
+  anniversary: 'Hoy (cobro en aniversario)',
 }
 
 // ─── Success screen ───────────────────────────────────────────────────
 
-function SuccessScreen() {
+function SuccessScreen({ email }: { email?: string }) {
   return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 py-16 text-center space-y-6">
-      <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center animate-bounce-once">
-        <svg className="w-10 h-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+    <div className="flex flex-col items-center justify-center min-h-[65vh] px-4 py-16 text-center space-y-6">
+      {/* Checkmark animado */}
+      <div className="w-24 h-24 rounded-full bg-green-100 flex items-center justify-center shadow-lg shadow-green-100">
+        <svg className="w-12 h-12 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
         </svg>
       </div>
+
+      {/* Título */}
       <div className="space-y-2">
-        <h2 className="text-3xl font-bold text-gray-900">¡Contrato realizado!</h2>
-        <p className="text-gray-500 text-lg max-w-sm mx-auto">
-          Tu reserva se ha completado correctamente. En breve recibirás un email de confirmación.
+        <h2 className="text-3xl font-bold text-gray-900">¡Contrato firmado!</h2>
+        <p className="text-gray-500 text-lg max-w-md mx-auto">
+          Tu reserva se ha completado correctamente. Tienes toda la información disponible en tu área de cliente.
         </p>
       </div>
-      <div className="bg-gray-50 rounded-3xl border border-gray-200 p-6 text-left space-y-2 max-w-sm w-full">
-        <p className="text-sm text-gray-500">Próximos pasos:</p>
-        <ul className="text-sm text-gray-700 space-y-1.5">
-          <li className="flex gap-2"><span>📧</span> Comprueba tu correo electrónico</li>
-          <li className="flex gap-2"><span>📋</span> Recibirás tu contrato en PDF</li>
-          <li className="flex gap-2"><span>🔑</span> Se te informará del acceso al trastero</li>
+
+      {/* Credenciales */}
+      <div className="bg-blue-50 border border-blue-200 rounded-3xl p-6 text-left max-w-sm w-full space-y-3">
+        <p className="text-sm font-semibold text-blue-800 flex items-center gap-2">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+          Credenciales enviadas a tu correo
+        </p>
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between items-center bg-white rounded-xl px-4 py-2.5 border border-blue-100">
+            <span className="text-gray-500">Usuario</span>
+            <span className="font-mono font-semibold text-gray-900">{email ?? 'tu email'}</span>
+          </div>
+          <div className="flex justify-between items-center bg-white rounded-xl px-4 py-2.5 border border-blue-100">
+            <span className="text-gray-500">Contraseña</span>
+            <span className="font-mono font-semibold text-gray-900">Trastero2024</span>
+          </div>
+        </div>
+        <p className="text-xs text-blue-600">
+          Podrás cambiar la contraseña desde el área de cliente en cualquier momento.
+        </p>
+      </div>
+
+      {/* Próximos pasos */}
+      <div className="bg-gray-50 rounded-3xl border border-gray-200 p-6 text-left max-w-sm w-full space-y-2.5">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Próximos pasos</p>
+        <ul className="text-sm text-gray-700 space-y-2">
+          <li className="flex gap-2.5">
+            <span className="text-lg leading-5">📧</span>
+            <span>Revisa tu correo — contrato PDF + credenciales de acceso</span>
+          </li>
+          <li className="flex gap-2.5">
+            <span className="text-lg leading-5">🔑</span>
+            <span>Accede al área de cliente para gestionar tu trastero</span>
+          </li>
+          <li className="flex gap-2.5">
+            <span className="text-lg leading-5">📦</span>
+            <span>Ya puedes acceder a tu trastero desde hoy</span>
+          </li>
         </ul>
       </div>
+
+      {/* CTA principal */}
       <a
         href="/"
-        className="mt-4 inline-flex items-center gap-2 bg-blue-600 text-white px-8 py-3 rounded-2xl font-semibold text-base hover:bg-blue-700 transition-colors"
+        className="inline-flex items-center gap-2 bg-blue-600 text-white px-10 py-3.5 rounded-2xl font-semibold text-base hover:bg-blue-700 active:scale-95 transition-all shadow-lg shadow-blue-200"
       >
         Ir al área de cliente
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -64,7 +103,7 @@ export function SummaryStep() {
   const [loading, setLoading]           = useState(false)
   const [submitError, setSubmitError]   = useState<string | null>(null)
 
-  if (confirmed) return <SuccessScreen />
+  if (confirmed) return <SuccessScreen email={customer?.email} />
 
   if (!customer || !paymentMethod || !startMode) {
     return (
@@ -98,26 +137,17 @@ export function SummaryStep() {
     setSubmitError(null)
     setLoading(true)
 
-    const { firstName, lastName, dni, phone, email, address, city, postalCode,
-            shelfIncluded, premiumInsurance, goldInsurance } = customer
-
-    const customerPayload = { firstName, lastName, dni, phone, email, address, city, postalCode }
     const failed: number[] = []
 
     for (const unit of selectedUnits) {
       try {
-        await createFullReservation(tenant, {
-          customer: customerPayload,
-          contract: {
-            storageUnitId:    unit.id,
-            monthlyPrice:     unit.price,
-            startDate:        startDateIso,
-            shelfIncluded,
-            premiumInsurance,
-            goldInsurance,
-            ...(promotionId ? { promotionId } : {}),
-          },
-          payment: { paymentMethod },
+        await createReservation({
+          tenantSlug:    tenant,
+          storageUnitId: unit.id,
+          firstName:     customer.firstName,
+          lastName:      customer.lastName,
+          email:         customer.email,
+          phone:         customer.phone,
         })
       } catch {
         failed.push(unit.number)
