@@ -141,7 +141,7 @@ function useWizardParams() {
 
 interface SignaturePadProps {
   onSigned: (isEmpty: boolean) => void
-  canvasRef: React.RefObject<HTMLCanvasElement>
+  canvasRef: React.RefObject<HTMLCanvasElement | null>
 }
 
 function SignaturePad({ onSigned, canvasRef }: SignaturePadProps) {

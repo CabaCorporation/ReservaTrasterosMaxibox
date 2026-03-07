@@ -145,11 +145,52 @@ export interface ConfirmFullReservationPayload {
   leadId?: string
   dniPhotoPath?: string
   promotionId?: string
+  extras?: SelectedExtra[]
+}
+
+// ─── Extras configurables ─────────────────────────────────────────
+
+export type ExtraBillingType = 'ONE_TIME' | 'MONTHLY'
+
+export interface TenantExtra {
+  id: string
+  name: string
+  description?: string
+  price: number
+  billingType: ExtraBillingType
+  required: boolean
+  maxQuantity: number
+}
+
+export interface TenantExtraGroup {
+  id: string
+  name: string
+  description?: string
+  selectionType: 'SINGLE' | 'MULTIPLE'
+  extras: TenantExtra[]
+}
+
+export interface TenantExtrasResponse {
+  groups: TenantExtraGroup[]
+  ungrouped: TenantExtra[]
+}
+
+export interface SelectedExtra {
+  extraId: string
+  quantity: number
+}
+
+// ─── Credenciales del portal ──────────────────────────────────────
+
+export interface PortalCredentials {
+  username: string
+  temporaryPassword: string
 }
 
 export interface ConfirmFullReservationResponse {
   success: boolean
   message: string
+  portalCredentials?: PortalCredentials
 }
 
 export interface UploadDniPhotoResponse {

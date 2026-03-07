@@ -4,6 +4,7 @@ import { Button } from '../../components/Button'
 import { PriceSummaryCard } from '../components/PriceSummaryCard'
 import { confirmFullReservation } from '../../services/api'
 import { getStartDate, formatDate, formatEuros, calcProportionalPayment } from '../utils'
+import type { PortalCredentials } from '../../types'
 
 const PAYMENT_LABELS: Record<string, string> = {
   card:     'Tarjeta bancaria',
@@ -18,7 +19,49 @@ const START_MODE_LABELS: Record<string, string> = {
 
 // ─── Pantalla de éxito ────────────────────────────────────────────────
 
-function SuccessScreen({ email }: { email?: string }) {
+function CredentialRow({ label, value, copy }: { label: string; value: string; copy?: boolean }) {
+  const [copied, setCopied] = useState(false)
+  const handleCopy = () => {
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+  return (
+    <div className="flex items-center justify-between bg-white rounded-xl px-4 py-2.5 border border-blue-100 gap-2">
+      <span className="text-gray-500 text-sm shrink-0">{label}</span>
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="font-mono font-semibold text-gray-900 text-sm truncate">{value}</span>
+        {copy && (
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="shrink-0 text-xs text-blue-500 hover:text-blue-700 transition-colors"
+            title="Copiar"
+          >
+            {copied ? (
+              <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            )}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function SuccessScreen({
+  credentials,
+}: {
+  credentials: PortalCredentials | null
+}) {
+  const [showPassword, setShowPassword] = useState(false)
+
   return (
     <div className="flex flex-col items-center justify-center min-h-[65vh] px-4 py-16 text-center space-y-6">
       <div className="w-24 h-24 rounded-full bg-green-100 flex items-center justify-center shadow-lg shadow-green-100">
@@ -34,37 +77,71 @@ function SuccessScreen({ email }: { email?: string }) {
         </p>
       </div>
 
+      {/* Credenciales del portal */}
       <div className="bg-blue-50 border border-blue-200 rounded-3xl p-6 text-left max-w-sm w-full space-y-3">
         <p className="text-sm font-semibold text-blue-800 flex items-center gap-2">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
           </svg>
-          Credenciales enviadas a tu correo
+          Tus credenciales de acceso al Área Cliente
         </p>
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between items-center bg-white rounded-xl px-4 py-2.5 border border-blue-100">
-            <span className="text-gray-500">Usuario</span>
-            <span className="font-mono font-semibold text-gray-900">{email ?? 'tu email'}</span>
-          </div>
-        </div>
-        <p className="text-xs text-blue-600">
-          Recibirás un correo con los datos de acceso al área de cliente.
-        </p>
+        {credentials ? (
+          <>
+            <div className="space-y-2">
+              <CredentialRow label="Usuario" value={credentials.username} copy />
+              <div className="flex items-center justify-between bg-white rounded-xl px-4 py-2.5 border border-blue-100 gap-2">
+                <span className="text-gray-500 text-sm shrink-0">Contraseña</span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-mono font-semibold text-gray-900 text-sm tracking-wider">
+                    {showPassword ? credentials.temporaryPassword : '••••••••'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="shrink-0 text-blue-500 hover:text-blue-700 transition-colors"
+                    title={showPassword ? 'Ocultar' : 'Mostrar'}
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      {showPassword ? (
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                      ) : (
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      )}
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+              Anota estas credenciales. Podrás cambiar la contraseña una vez dentro del Área Cliente.
+            </p>
+          </>
+        ) : (
+          <p className="text-sm text-blue-600">
+            Recibirás un correo con los datos de acceso al área de cliente.
+          </p>
+        )}
       </div>
 
       <div className="bg-gray-50 rounded-3xl border border-gray-200 p-6 text-left max-w-sm w-full space-y-2.5">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Próximos pasos</p>
         <ul className="text-sm text-gray-700 space-y-2">
           <li className="flex gap-2.5">
-            <span className="text-lg leading-5">📧</span>
-            <span>Revisa tu correo — contrato PDF y credenciales de acceso</span>
+            <svg className="w-4 h-4 mt-0.5 text-blue-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14" />
+            </svg>
+            <span>Accede al Área Cliente con las credenciales anteriores</span>
           </li>
           <li className="flex gap-2.5">
-            <span className="text-lg leading-5">🔑</span>
-            <span>Accede al área de cliente para gestionar tu trastero</span>
+            <svg className="w-4 h-4 mt-0.5 text-blue-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+            <span>Cambia la contraseña en tu perfil por seguridad</span>
           </li>
           <li className="flex gap-2.5">
-            <span className="text-lg leading-5">📦</span>
+            <svg className="w-4 h-4 mt-0.5 text-blue-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+            </svg>
             <span>Ya puedes acceder a tu trastero desde hoy</span>
           </li>
         </ul>
@@ -90,6 +167,7 @@ export function SummaryStep() {
   const {
     tenant, selectedUnits, startMode, customer, paymentMethod,
     promotionId, confirmed, leadId, dniPhotoPath, signature,
+    selectedExtras, tenantExtras, portalCredentials,
   } = state
 
   const [promoInput, setPromoInput]   = useState(promotionId ?? '')
@@ -97,7 +175,7 @@ export function SummaryStep() {
   const [loading, setLoading]          = useState(false)
   const [submitError, setSubmitError]  = useState<string | null>(null)
 
-  if (confirmed) return <SuccessScreen email={customer?.email} />
+  if (confirmed) return <SuccessScreen credentials={portalCredentials} />
 
   if (!customer || !paymentMethod || !startMode) {
     return (
@@ -149,30 +227,37 @@ export function SummaryStep() {
     setLoading(true)
 
     const failed: number[] = []
+    let savedCredentials = portalCredentials
 
     for (const unit of selectedUnits) {
       try {
-        await confirmFullReservation({
-          tenantSlug:      tenant,
-          storageUnitId:   unit.id,
-          firstName:       customer.firstName,
-          lastName:        customer.lastName,
-          dni:             customer.dni,
-          phone:           customer.phone,
-          email:           customer.email,
-          address:         customer.address,
-          city:            customer.city,
-          postalCode:      customer.postalCode,
+        const res = await confirmFullReservation({
+          tenantSlug:       tenant,
+          storageUnitId:    unit.id,
+          firstName:        customer.firstName,
+          lastName:         customer.lastName,
+          dni:              customer.dni,
+          phone:            customer.phone,
+          email:            customer.email,
+          address:          customer.address,
+          city:             customer.city,
+          postalCode:       customer.postalCode,
           startMode,
-          shelfIncluded:   customer.shelfIncluded,
+          shelfIncluded:    customer.shelfIncluded,
           premiumInsurance: customer.premiumInsurance,
-          goldInsurance:   customer.goldInsurance,
+          goldInsurance:    customer.goldInsurance,
           paymentMethod,
-          monthlyPrice:    unit.price,
-          leadId:          leadId ?? undefined,
-          dniPhotoPath:    dniPhotoPath ?? undefined,
-          promotionId:     promotionId ?? undefined,
+          monthlyPrice:     unit.price,
+          leadId:           leadId ?? undefined,
+          dniPhotoPath:     dniPhotoPath ?? undefined,
+          promotionId:      promotionId ?? undefined,
+          extras:           selectedExtras.length > 0 ? selectedExtras : undefined,
         })
+        // Guardar credenciales del portal (solo la primera vez)
+        if (!savedCredentials && res.portalCredentials) {
+          savedCredentials = res.portalCredentials
+          dispatch({ type: 'SET_PORTAL_CREDENTIALS', credentials: res.portalCredentials })
+        }
       } catch (err) {
         console.error(`[Summary] Error confirmando trastero #${unit.number}:`, err)
         failed.push(unit.number)
@@ -257,8 +342,25 @@ export function SummaryStep() {
             />
           </SummarySection>
 
-          {/* Extras */}
-          {(customer.shelfIncluded || customer.premiumInsurance || customer.goldInsurance) && (
+          {/* Extras — sistema dinámico o legacy */}
+          {selectedExtras.length > 0 && (
+            <SummarySection title="Servicios adicionales">
+              {selectedExtras.map((se) => {
+                const allExtras = [
+                  ...(tenantExtras?.ungrouped ?? []),
+                  ...(tenantExtras?.groups.flatMap((g) => g.extras) ?? []),
+                ]
+                const extra = allExtras.find((e) => e.id === se.extraId)
+                if (!extra) return null
+                const price = se.quantity > 1 ? `${se.quantity} × ${formatEuros(extra.price)}` : formatEuros(extra.price)
+                const suffix = extra.billingType === 'MONTHLY' ? '/mes' : ' (único)'
+                return (
+                  <SummaryRow key={se.extraId} label={extra.name} value={`${price}${suffix}`} />
+                )
+              })}
+            </SummarySection>
+          )}
+          {selectedExtras.length === 0 && (customer.shelfIncluded || customer.premiumInsurance || customer.goldInsurance) && (
             <SummarySection title="Servicios adicionales">
               {customer.shelfIncluded    && <SummaryRow label="Estantería incluida" value="Sí" />}
               {customer.premiumInsurance && <SummaryRow label="Seguro premium"      value="Sí" />}

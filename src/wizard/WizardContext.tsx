@@ -1,5 +1,14 @@
 import { createContext, useContext, useReducer, type ReactNode } from 'react'
-import type { StorageUnit, CustomerData, PaymentMethod, StartMode, TenantSettings } from '../types'
+import type {
+  StorageUnit,
+  CustomerData,
+  PaymentMethod,
+  StartMode,
+  TenantSettings,
+  TenantExtrasResponse,
+  SelectedExtra,
+  PortalCredentials,
+} from '../types'
 
 // ─── State ────────────────────────────────────────────────────────────
 
@@ -23,6 +32,12 @@ export interface WizardState {
   dniPhotoFile: File | null
   /** Ruta en el servidor de la foto del DNI una vez subida */
   dniPhotoPath: string | null
+  /** Extras configurables del tenant cargados al inicio */
+  tenantExtras: TenantExtrasResponse | null
+  /** Extras seleccionados por el cliente (nuevo sistema configurable) */
+  selectedExtras: SelectedExtra[]
+  /** Credenciales del portal generadas tras confirmar la reserva */
+  portalCredentials: PortalCredentials | null
 }
 
 // ─── Actions ──────────────────────────────────────────────────────────
@@ -49,6 +64,10 @@ type WizardAction =
    * fuerza el startMode correspondiente y salta al paso 2.
    */
   | { type: 'APPLY_BILLING_MODE' }
+  | { type: 'SET_TENANT_EXTRAS'; extras: TenantExtrasResponse }
+  | { type: 'SET_SELECTED_EXTRAS'; extras: SelectedExtra[] }
+  | { type: 'TOGGLE_EXTRA'; extra: SelectedExtra }
+  | { type: 'SET_PORTAL_CREDENTIALS'; credentials: PortalCredentials }
 
 // ─── Reducer ──────────────────────────────────────────────────────────
 
@@ -67,6 +86,9 @@ function createInitialState(tenant: string): WizardState {
     leadId: null,
     dniPhotoFile: null,
     dniPhotoPath: null,
+    tenantExtras: null,
+    selectedExtras: [],
+    portalCredentials: null,
   }
 }
 
@@ -114,10 +136,24 @@ function reducer(state: WizardState, action: WizardAction): WizardState {
     case 'APPLY_BILLING_MODE': {
       const bm = state.tenantSettings?.billingMode
       if (!bm || bm === 'BOTH') return state
-      // Si solo hay una opción, la forzamos y saltamos el paso 1
       const forced: StartMode = bm === 'SAME_DAY' ? 'anniversary' : 'immediate'
       return { ...state, startMode: forced, step: 2 }
     }
+    case 'SET_TENANT_EXTRAS':
+      return { ...state, tenantExtras: action.extras }
+    case 'SET_SELECTED_EXTRAS':
+      return { ...state, selectedExtras: action.extras }
+    case 'TOGGLE_EXTRA': {
+      const exists = state.selectedExtras.find((e) => e.extraId === action.extra.extraId)
+      return {
+        ...state,
+        selectedExtras: exists
+          ? state.selectedExtras.filter((e) => e.extraId !== action.extra.extraId)
+          : [...state.selectedExtras, action.extra],
+      }
+    }
+    case 'SET_PORTAL_CREDENTIALS':
+      return { ...state, portalCredentials: action.credentials }
     default:
       return state
   }

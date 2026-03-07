@@ -413,7 +413,7 @@ export function StorageSelectionStep() {
                         <span className="text-sm font-semibold text-amber-700">{formatEuros(unitProportional)}</span>
                       </div>
                     )}
-                    {startMode === 'next_month' && (
+                    {(startMode as string) === 'next_month' && (
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-gray-500">Pago hoy</span>
                         <span className="text-sm font-semibold text-green-600">0,00 €</span>

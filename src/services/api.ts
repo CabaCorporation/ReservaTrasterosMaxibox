@@ -12,6 +12,7 @@ import type {
   ConfirmFullReservationPayload,
   ConfirmFullReservationResponse,
   UploadDniPhotoResponse,
+  TenantExtrasResponse,
 } from '../types'
 
 // ─── Anti-cache ───────────────────────────────────────────────────────
@@ -164,6 +165,13 @@ export async function getPlan(
 export async function getTenantSettings(tenantSlug: string): Promise<TenantSettings> {
   return fetchApi<TenantSettings>(
     `/api/public/reservations/settings/${encodeURIComponent(tenantSlug)}`
+  )
+}
+
+/** Carga los extras configurables del tenant para mostrar en el wizard. */
+export async function getTenantExtras(tenantSlug: string): Promise<TenantExtrasResponse> {
+  return fetchApi<TenantExtrasResponse>(
+    `/api/public/reservations/extras/${encodeURIComponent(tenantSlug)}`
   )
 }
 

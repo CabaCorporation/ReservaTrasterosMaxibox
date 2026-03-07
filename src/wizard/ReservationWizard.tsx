@@ -7,7 +7,7 @@ import { CustomerFormStep } from './steps/CustomerFormStep'
 import { ContractStep } from './steps/ContractStep'
 import { PaymentStep } from './steps/PaymentStep'
 import { SummaryStep } from './steps/SummaryStep'
-import { getTenantSettings } from '../services/api'
+import { getTenantSettings, getTenantExtras } from '../services/api'
 
 function readTenant(): string {
   return new URLSearchParams(window.location.search).get('tenant') ?? 'maxibox'
@@ -18,21 +18,27 @@ function readTenant(): string {
 function WizardContent() {
   const { state, dispatch } = useWizard()
 
-  // Cargar la configuración del tenant al montar el wizard
+  // Cargar configuración del tenant y extras al montar el wizard
   useEffect(() => {
     let cancelled = false
 
-    getTenantSettings(state.tenant)
-      .then(settings => {
-        if (cancelled) return
-        dispatch({ type: 'SET_TENANT_SETTINGS', settings })
-        // Si el billing mode no es BOTH, seleccionar automáticamente y saltar al paso 2
+    Promise.allSettled([
+      getTenantSettings(state.tenant),
+      getTenantExtras(state.tenant),
+    ]).then(([settingsResult, extrasResult]) => {
+      if (cancelled) return
+      if (settingsResult.status === 'fulfilled') {
+        dispatch({ type: 'SET_TENANT_SETTINGS', settings: settingsResult.value })
         dispatch({ type: 'APPLY_BILLING_MODE' })
-      })
-      .catch(err => {
-        // Si falla la carga de settings, el wizard funciona con BOTH por defecto
-        console.warn('[Wizard] No se pudo cargar la configuración del tenant:', err)
-      })
+      } else {
+        console.warn('[Wizard] No se pudo cargar la configuración del tenant:', settingsResult.reason)
+      }
+      if (extrasResult.status === 'fulfilled') {
+        dispatch({ type: 'SET_TENANT_EXTRAS', extras: extrasResult.value })
+      } else {
+        console.warn('[Wizard] No se pudieron cargar los extras del tenant:', extrasResult.reason)
+      }
+    })
 
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -3,7 +3,10 @@ import { useWizard } from '../WizardContext'
 import { Button } from '../../components/Button'
 import { PriceSummaryCard } from '../components/PriceSummaryCard'
 import { createLead, uploadDniPhoto } from '../../services/api'
-import type { CustomerData } from '../../types'
+import type { CustomerData, TenantExtra, TenantExtraGroup, SelectedExtra } from '../../types'
+
+const formatEuros = (n: number) =>
+  new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(n)
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const DNI_RE   = /^[0-9]{8}[A-Za-z]$|^[XYZxyz][0-9]{7}[A-Za-z]$/
@@ -103,6 +106,131 @@ function CheckboxCard({
         </div>
       </div>
     </button>
+  )
+}
+
+// ─── Extra card (sistema configurable) ───────────────────────────────
+
+function ExtraCard({
+  extra,
+  checked,
+  onChange,
+  isRadio = false,
+}: {
+  extra: TenantExtra
+  checked: boolean
+  onChange: (v: boolean) => void
+  isRadio?: boolean
+}) {
+  const billingLabel = extra.billingType === 'MONTHLY' ? '/mes' : ' (pago único)'
+  return (
+    <button
+      type="button"
+      onClick={() => !extra.required && onChange(!checked)}
+      disabled={extra.required}
+      className={`w-full text-left p-4 rounded-2xl border-2 transition-all duration-150 ${
+        checked
+          ? 'border-blue-500 bg-blue-50'
+          : extra.required
+          ? 'border-amber-300 bg-amber-50 cursor-default'
+          : 'border-gray-200 bg-white hover:border-gray-300'
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <div className={`mt-0.5 flex items-center justify-center shrink-0 transition-all ${
+          isRadio
+            ? `w-5 h-5 rounded-full border-2 ${checked ? 'bg-blue-600 border-blue-600' : 'border-gray-300'}`
+            : `w-5 h-5 rounded-md border-2 ${checked ? 'bg-blue-600 border-blue-600' : 'border-gray-300'}`
+        }`}>
+          {checked && !isRadio && (
+            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          )}
+          {checked && isRadio && <div className="w-2 h-2 rounded-full bg-white" />}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <p className={`text-sm font-semibold ${
+              checked ? 'text-blue-700' : extra.required ? 'text-amber-700' : 'text-gray-800'
+            }`}>
+              {extra.name}
+              {extra.required && <span className="ml-1.5 text-xs font-normal text-amber-600">(obligatorio)</span>}
+            </p>
+            <span className={`text-sm font-bold shrink-0 ${checked ? 'text-blue-700' : 'text-gray-900'}`}>
+              {formatEuros(extra.price)}{billingLabel}
+            </span>
+          </div>
+          {extra.description && (
+            <p className="text-xs text-gray-500 mt-0.5">{extra.description}</p>
+          )}
+        </div>
+      </div>
+    </button>
+  )
+}
+
+function DynamicExtrasSection({
+  groups,
+  ungrouped,
+  selected,
+  onToggle,
+}: {
+  groups: TenantExtraGroup[]
+  ungrouped: TenantExtra[]
+  selected: SelectedExtra[]
+  onToggle: (extra: SelectedExtra) => void
+}) {
+  const isSelected = (id: string) => selected.some((s) => s.extraId === id)
+
+  const handleGroupToggle = (extra: TenantExtra, groupType: string) => {
+    if (extra.required) return
+    if (groupType === 'SINGLE') {
+      // Radio: deselect others in group, then toggle this one
+      onToggle({ extraId: extra.id, quantity: 1 })
+    } else {
+      onToggle({ extraId: extra.id, quantity: 1 })
+    }
+  }
+
+  return (
+    <>
+      {groups.map((group) => (
+        <div key={group.id} className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 space-y-3">
+          <div className="mb-1">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{group.name}</p>
+            {group.description && <p className="text-xs text-gray-400 mt-0.5">{group.description}</p>}
+            {group.selectionType === 'SINGLE' && (
+              <p className="text-xs text-blue-500 mt-0.5">Selecciona una opción</p>
+            )}
+          </div>
+          {group.extras.map((extra) => (
+            <ExtraCard
+              key={extra.id}
+              extra={extra}
+              checked={isSelected(extra.id)}
+              onChange={() => handleGroupToggle(extra, group.selectionType)}
+              isRadio={group.selectionType === 'SINGLE'}
+            />
+          ))}
+        </div>
+      ))}
+      {ungrouped.length > 0 && (
+        <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 space-y-3">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+            Servicios adicionales
+          </p>
+          {ungrouped.map((extra) => (
+            <ExtraCard
+              key={extra.id}
+              extra={extra}
+              checked={isSelected(extra.id)}
+              onChange={() => onToggle({ extraId: extra.id, quantity: 1 })}
+            />
+          ))}
+        </div>
+      )}
+    </>
   )
 }
 
@@ -207,12 +335,47 @@ export function CustomerFormStep() {
   const { state, dispatch } = useWizard()
   const requireDniUpload = state.tenantSettings?.requireDniUpload ?? false
   const initialData = state.customer ?? EMPTY
+  const tenantExtras = state.tenantExtras
+  const useDynamicExtras = tenantExtras !== null &&
+    (tenantExtras.groups.length > 0 || tenantExtras.ungrouped.length > 0)
 
   const [form, setForm]         = useState<CustomerData>(initialData)
   const [errors, setErrors]     = useState<FormErrors>({})
   const [dniFile, setDniFile]   = useState<File | null>(state.dniPhotoFile)
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving]     = useState(false)
+
+  // Para extras dinámicos: gestión de selección con lógica SINGLE/MULTIPLE
+  const handleToggleExtra = useCallback((incoming: SelectedExtra) => {
+    const group = tenantExtras?.groups.find((g) =>
+      g.extras.some((e) => e.id === incoming.extraId)
+    )
+    const isSingle = group?.selectionType === 'SINGLE'
+
+    if (isSingle && group) {
+      // Radio: si ya está seleccionado, deseleccionar; si no, seleccionar solo este
+      const alreadySelected = state.selectedExtras.some((s) => s.extraId === incoming.extraId)
+      if (alreadySelected) {
+        // Deseleccionar
+        dispatch({
+          type: 'SET_SELECTED_EXTRAS',
+          extras: state.selectedExtras.filter((s) => s.extraId !== incoming.extraId),
+        })
+      } else {
+        // Deseleccionar otros del mismo grupo y seleccionar este
+        const groupExtraIds = new Set(group.extras.map((e) => e.id))
+        dispatch({
+          type: 'SET_SELECTED_EXTRAS',
+          extras: [
+            ...state.selectedExtras.filter((s) => !groupExtraIds.has(s.extraId)),
+            incoming,
+          ],
+        })
+      }
+    } else {
+      dispatch({ type: 'TOGGLE_EXTRA', extra: incoming })
+    }
+  }, [dispatch, state.selectedExtras, tenantExtras])
 
   const update = useCallback(
     <K extends keyof CustomerData>(field: K, value: CustomerData[K]) => {
@@ -386,30 +549,39 @@ export function CustomerFormStep() {
             </div>
           )}
 
-          {/* Extras */}
-          <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 space-y-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-              Servicios adicionales
-            </p>
-            <CheckboxCard
-              checked={form.shelfIncluded}
-              onChange={v => update('shelfIncluded', v)}
-              label="Estantería incluida"
-              description="Añade una estantería metálica a tu trastero para aprovechar mejor el espacio"
+          {/* Extras — sistema dinámico (si existen) o legacy (hardcoded) */}
+          {useDynamicExtras ? (
+            <DynamicExtrasSection
+              groups={tenantExtras!.groups}
+              ungrouped={tenantExtras!.ungrouped}
+              selected={state.selectedExtras}
+              onToggle={handleToggleExtra}
             />
-            <CheckboxCard
-              checked={form.premiumInsurance}
-              onChange={v => update('premiumInsurance', v)}
-              label="Seguro premium"
-              description="Protección ampliada de tus objetos almacenados hasta 3.000 €"
-            />
-            <CheckboxCard
-              checked={form.goldInsurance}
-              onChange={v => update('goldInsurance', v)}
-              label="Seguro gold"
-              description="Protección máxima de tus objetos almacenados hasta 10.000 €"
-            />
-          </div>
+          ) : (
+            <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 space-y-3">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                Servicios adicionales
+              </p>
+              <CheckboxCard
+                checked={form.shelfIncluded}
+                onChange={v => update('shelfIncluded', v)}
+                label="Estantería incluida"
+                description="Añade una estantería metálica a tu trastero para aprovechar mejor el espacio"
+              />
+              <CheckboxCard
+                checked={form.premiumInsurance}
+                onChange={v => update('premiumInsurance', v)}
+                label="Seguro premium"
+                description="Protección ampliada de tus objetos almacenados hasta 3.000 €"
+              />
+              <CheckboxCard
+                checked={form.goldInsurance}
+                onChange={v => update('goldInsurance', v)}
+                label="Seguro gold"
+                description="Protección máxima de tus objetos almacenados hasta 10.000 €"
+              />
+            </div>
+          )}
         </div>
 
         {/* Price summary sidebar */}
